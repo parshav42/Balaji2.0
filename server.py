@@ -1,14 +1,17 @@
 """Local-only FastAPI service + BALAJI browser dashboard."""
 from __future__ import annotations
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 from urllib.parse import urlsplit
+from anyio import CancelScope, to_thread
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from balaji import agent, storage, config, rag
 from balaji.ollama_client import OllamaError
+from balaji.voice_api import router as voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BALAJI Local Agent API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+app.include_router(voice_router)
 
 @app.middleware("http")
 async def reject_cross_origin_writes(request: Request, call_next):
@@ -36,9 +40,23 @@ class ChatIn(BaseModel):
 class ApprovalIn(BaseModel):
     approved: bool
 
+
+class ChatStreamResponse(StreamingResponse):
+    async def stream_response(self, send):
+        try:
+            await super().stream_response(send)
+        finally:
+            # A disconnect can happen while sending a chunk, with the generator still suspended.
+            with CancelScope(shield=True):
+                await self.body_iterator.aclose()
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+
+@app.get("/dashboard.js", include_in_schema=False)
+def dashboard_script():
+    return FileResponse(WEB_ROOT / "dashboard.js", media_type="text/javascript")
 
 @app.get("/health")
 def health():
@@ -53,17 +71,20 @@ def chat(inp: ChatIn):
 
 @app.post("/api/chat/stream")
 def chat_stream(inp: ChatIn):
-    import json
-
-    def events():
+    async def events():
+        stream = agent.ask_stream(inp.message, inp.session_id)
         try:
-            for event in agent.ask_stream(inp.message, inp.session_id):
+            # Keep the Ollama iterator off the event loop and own its lifetime on disconnect.
+            while (event := await to_thread.run_sync(next, stream, None)) is not None:
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except (OllamaError, ValueError) as exc:
             status = "503" if isinstance(exc, OllamaError) else "400"
             yield f"data: {json.dumps({'type':'error','status':status,'detail':str(exc)}, ensure_ascii=False)}\n\n"
+        finally:
+            with CancelScope(shield=True):
+                await to_thread.run_sync(stream.close)
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return ChatStreamResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.get("/api/tasks")
 def tasks():
