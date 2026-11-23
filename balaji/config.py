@@ -18,3 +18,16 @@ def validate_ollama_url() -> None:
     url = urlsplit(OLLAMA_URL)
     if url.scheme != "http" or url.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("BALAJI_OLLAMA_URL must be a local HTTP address (localhost or 127.0.0.1).")
+
+REMOTE_HOST = os.environ.get("BALAJI_REMOTE_HOST", "").lower().strip()
+PROJECTS_FILE = os.environ.get("BALAJI_PROJECTS_FILE", "")
+TIMEZONE = os.environ.get("BALAJI_TIMEZONE", "Asia/Kolkata")
+GMAIL_CLIENT_FILE = os.environ.get("BALAJI_GMAIL_CLIENT_FILE", "")
+GMAIL_REDIRECT_URI = os.environ.get("BALAJI_GMAIL_REDIRECT_URI", "")
+
+
+def validate_remote_host() -> None:
+    import re
+
+    if REMOTE_HOST and not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net", REMOTE_HOST):
+        raise ValueError("BALAJI_REMOTE_HOST must be the full Tailscale Serve hostname, without a scheme or port.")
