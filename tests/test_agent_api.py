@@ -182,3 +182,12 @@ def test_cross_origin_write_blocked():
     with TestClient(server.app) as client:
         response = client.post('/api/chat', headers={'Origin':'https://evil.example'}, json={'message':'Hi'})
         assert response.status_code == 403
+
+
+def test_local_browser_writes_are_same_origin(monkeypatch):
+    monkeypatch.setattr(ollama_client, 'chat', fixed_reply)
+    origin = 'http://127.0.0.1:18080'
+    with TestClient(server.app, base_url=origin) as client:
+        assert client.post('/api/chat', headers={'Origin': origin}, json={'message': 'Hi'}).status_code == 200
+        assert client.post('/api/chat', headers={'Origin': 'http://127.0.0.1:18081'},
+                           json={'message': 'Hi'}).status_code == 403

@@ -57,7 +57,7 @@ def audio_format(mime: str, data: bytes) -> str:
         "mov": data[4:8] == b"ftyp",
         "wav": data.startswith(b"RIFF") and data[8:12] == b"WAVE",
     }
-    if not candidates.get(declared):
+    if declared is None or not candidates[declared]:
         raise HTTPException(415, "Unsupported recording. Upload WebM, Ogg, MP4 or WAV audio.")
     return declared
 

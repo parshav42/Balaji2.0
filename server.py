@@ -27,8 +27,16 @@ async def reject_cross_origin_writes(request: Request, call_next):
     """Protect local browser actions from cross-site requests with a foreign Origin."""
     origin = request.headers.get("origin")
     if origin and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-        parsed = urlsplit(origin)
-        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"} or parsed.port not in (8000, None):
+        try:
+            source = urlsplit(origin)
+            target = urlsplit(str(request.url))
+            same_origin = (source.scheme == target.scheme == "http"
+                           and source.hostname == target.hostname
+                           and source.hostname in {"127.0.0.1", "localhost"}
+                           and (source.port or 80) == (target.port or 80))
+        except ValueError:
+            same_origin = False
+        if not same_origin:
             return JSONResponse(status_code=403, content={"detail": "Cross-origin writes are blocked"})
     return await call_next(request)
 WEB_ROOT = Path(__file__).parent / "web"
