@@ -2,6 +2,9 @@ const el = id => document.getElementById(id);
 const prompt = el('prompt');
 const speaker = el('speaker');
 const MAX_RECORD_MS = 59_000; // Leave room for MediaRecorder's final audio frame.
+const IDLE_LISTEN_MS = 45_000;
+const END_OF_TURN_MS = 1_100;
+const MIN_VOICE_MS = 150;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_SPEECH_CHARS = 750;
 const recordTypes = new Map([
@@ -12,6 +15,8 @@ const jsonHeaders = {'Content-Type': 'application/json'};
 const approvalIds = new Set();
 let session = sessionStorage.getItem('balaji_session') || 'web';
 let voiceMode = false;
+let voiceApproval = null;
+let audioContext = null;
 let micPermissionPending = false;
 let capture = null;
 let chat = null;
@@ -61,17 +66,41 @@ function showTranscript(text = '') {
 
 function updateControls() {
   el('voice-mode').setAttribute('aria-pressed', voiceMode);
-  el('voice-mode').textContent = `Voice Mode: ${voiceMode ? 'On' : 'Off'}`;
+  el('voice-mode').textContent = voiceMode ? 'End voice session' : 'Start voice conversation';
+  el('voice-mode').disabled = micPermissionPending && !voiceMode;
   el('voice-settings').hidden = !voiceMode;
-  el('mic').hidden = !voiceMode;
-  el('mic').disabled = micPermissionPending || Boolean(chat || capture);
-  el('send').disabled = Boolean(chat || capture);
-  el('newchat').disabled = Boolean(chat || capture);
+  el('mic').hidden = !voiceMode || el('auto-send').checked;
+  el('mic').disabled = micPermissionPending || Boolean(chat || capture || voiceApproval);
+  el('send').disabled = Boolean(chat || capture || voiceApproval);
+  el('newchat').disabled = Boolean(chat || capture || voiceApproval);
   prompt.readOnly = Boolean(capture);
   el('stop').hidden = !(capture || chat || speech);
-  el('stop').textContent = capture?.phase === 'recording' ? 'Stop recording'
+  el('stop').textContent = capture?.phase === 'recording' ? (capture.automatic ? 'Send now' : 'Stop recording')
     : chat ? 'Stop generation' : speech ? 'Stop playback' : 'Cancel';
   el('play').hidden = !speech?.needsGesture;
+}
+
+function endVoiceSession(state = 'Ready', detail = '') {
+  voiceMode = false;
+  voiceApproval = null;
+  if (capture) endCapture(capture);
+  if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => {});
+  audioContext = null;
+  if (chat) chat.allowSpeech = false;
+  stopSpeech();
+  setStatus(state, detail);
+  updateControls();
+}
+
+function continueConversation(detail = '') {
+  updateControls();
+  if (voiceApproval) {
+    setStatus('Approval needed', 'Choose Approve or Reject to continue the voice conversation.');
+  } else if (voiceMode && el('auto-send').checked && !chat && !capture && !speech) {
+    void startRecording(true, detail);
+  } else {
+    setStatus('Ready', detail);
+  }
 }
 
 async function refresh() {
@@ -104,7 +133,14 @@ function approval(p) {
         const result = await request('/api/approvals/' + p.id, {
           method: 'POST', headers: jsonHeaders, body: JSON.stringify({approved: allow})
         });
-        if (session === originSession) msg('assistant', result.result || result.status);
+        if (session === originSession) {
+          const message = result.result || result.status;
+          msg('assistant', message);
+          if (voiceApproval === p.id) {
+            voiceApproval = null;
+            void speak(message);
+          }
+        }
         void refresh();
       } catch (error) {
         for (const child of controls.children) child.disabled = false;
@@ -147,6 +183,11 @@ function stopSpeech() {
   updateControls();
 }
 
+function finishSpeech() {
+  stopSpeech();
+  continueConversation();
+}
+
 async function playSpeech(job) {
   if (speech !== job) return;
   job.needsGesture = false;
@@ -161,15 +202,17 @@ async function playSpeech(job) {
       setStatus('Ready', 'Your browser paused autoplay. Select Play reply to hear BALAJI.');
       updateControls();
     } else {
-      stopSpeech();
-      setStatus('Error', 'Audio playback failed. Check your browser audio settings and output device.');
+      endVoiceSession('Error', 'Audio playback failed. Check your browser audio settings and output device.');
     }
   }
 }
 
 async function speak(answer) {
   const text = Array.from(answer.replace(/\s+/g, ' ').trim()).slice(0, MAX_SPEECH_CHARS).join('');
-  if (!voiceMode || speaker.muted || !text) return;
+  if (!voiceMode || speaker.muted || !text) {
+    continueConversation();
+    return;
+  }
   stopSpeech();
   const job = {controller: new AbortController()};
   speech = job;
@@ -187,20 +230,17 @@ async function speak(answer) {
     await playSpeech(job);
   } catch (error) {
     if (speech !== job) return;
-    stopSpeech();
-    setStatus('Error', error.message);
+    endVoiceSession('Error', error.message);
   }
 }
 
 speaker.addEventListener('ended', () => {
   if (!speech || !speaker.ended) return;
-  stopSpeech();
-  setStatus('Ready');
+  finishSpeech();
 });
 speaker.addEventListener('error', () => {
   if (!speech?.url || !speaker.error) return;
-  stopSpeech();
-  setStatus('Error', 'The browser could not play the generated audio.');
+  endVoiceSession('Error', 'The browser could not play the generated audio.');
 });
 
 el('play').addEventListener('click', () => void playSpeech(speech));
@@ -212,20 +252,18 @@ el('mute').addEventListener('click', () => {
   speaker.muted = !speaker.muted;
   el('mute').textContent = speaker.muted ? 'Unmute' : 'Mute';
   el('mute').setAttribute('aria-pressed', speaker.muted);
-  if (speaker.muted && speech) {
-    stopSpeech();
-    setStatus('Ready');
-  }
+  if (speaker.muted && speech) finishSpeech();
 });
 
 function releaseMic(job) {
   clearInterval(job.clock);
   clearTimeout(job.deadline);
+  clearTimeout(job.idle);
   cancelAnimationFrame(job.frame);
+  job.source?.disconnect();
+  job.source = null;
   job.stream?.getTracks().forEach(track => track.stop());
   job.stream = null;
-  if (job.context && job.context.state !== 'closed') void job.context.close().catch(() => {});
-  job.context = null;
   el('meter').style.removeProperty('--level');
 }
 
@@ -238,26 +276,51 @@ function endCapture(job) {
   updateControls();
 }
 
-function updateMeter(job) {
+function prepareAudioContext() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
+  if (!AudioContext || audioContext) return;
   try {
-    job.context = new AudioContext();
-    const analyser = job.context.createAnalyser();
-    analyser.fftSize = 256;
-    job.context.createMediaStreamSource(job.stream).connect(analyser);
-    void job.context.resume().catch(() => {});
-    const samples = new Uint8Array(analyser.fftSize);
-    function frame() {
-      analyser.getByteTimeDomainData(samples);
-      const rms = Math.sqrt(samples.reduce((sum, sample) => sum + ((sample - 128) / 128) ** 2, 0) / samples.length);
-      el('meter').style.setProperty('--level', Math.min(1, 0.14 + rms * 4));
-      job.frame = requestAnimationFrame(frame);
-    }
-    frame();
+    audioContext = new AudioContext();
+    void audioContext.resume().catch(() => {});
   } catch {
-    // Recording and the timer still work if Web Audio is unavailable.
+    audioContext = null;
   }
+}
+
+function observeVoice(job, rms, now) {
+  // A sustained signal starts the turn. Brief gaps between words keep it open.
+  const threshold = Math.max(0.012, Math.min(0.035, job.noiseFloor * 2.5));
+  if (rms >= threshold) {
+    job.voiceSince ??= now;
+    job.lastVoice = now;
+    if (!job.heardVoice && now - job.voiceSince >= MIN_VOICE_MS) {
+      job.heardVoice = true;
+      clearTimeout(job.idle);
+      setStatus('Listening', 'Finish speaking and pause to send.');
+    }
+  } else {
+    job.noiseFloor += (rms - job.noiseFloor) * 0.06;
+    if (now - job.lastVoice > 180) job.voiceSince = null;
+    if (job.heardVoice && now - job.lastVoice >= END_OF_TURN_MS) finishRecording(job);
+  }
+}
+
+function updateMeter(job) {
+  if (!audioContext) return false;
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 1024;
+  job.source = audioContext.createMediaStreamSource(job.stream);
+  job.source.connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  function frame(now) {
+    analyser.getFloatTimeDomainData(samples);
+    const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
+    el('meter').style.setProperty('--level', Math.min(1, 0.14 + rms * 4));
+    if (job.automatic) observeVoice(job, rms, now);
+    if (capture === job && job.phase === 'recording') job.frame = requestAnimationFrame(frame);
+  }
+  job.frame = requestAnimationFrame(frame);
+  return true;
 }
 
 function microphoneError(error) {
@@ -299,7 +362,13 @@ async function transcribe(job) {
   } catch (error) {
     if (capture !== job) return;
     endCapture(job);
-    setStatus('Error', error.message);
+    if (job.automatic && error.message.startsWith('No speech was detected')) {
+      continueConversation('I didn’t catch that. Try speaking again.');
+    } else if (job.automatic) {
+      endVoiceSession('Error', error.message);
+    } else {
+      setStatus('Error', error.message);
+    }
   }
 }
 
@@ -312,25 +381,29 @@ function finishRecording(job) {
   updateControls();
 }
 
-async function startRecording() {
-  if (!voiceMode || chat || capture || micPermissionPending) return;
+async function startRecording(automatic = false, detail = '') {
+  if (!voiceMode || chat || capture || voiceApproval || micPermissionPending) return;
   stopSpeech();
-  showTranscript();
+  if (!automatic) showTranscript();
   if (!window.isSecureContext) {
-    setStatus('Error', 'Microphone access needs a secure page. Open http://127.0.0.1:8000 on this computer.');
+    endVoiceSession('Error', 'Microphone access needs a secure page. Open http://127.0.0.1:8000 on this computer.');
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    setStatus('Error', 'Browser microphone recording is unavailable. Try a current Chromium or Firefox browser.');
+    endVoiceSession('Error', 'Browser microphone recording is unavailable. Try a current Chromium or Firefox browser.');
     return;
   }
-  const job = {phase: 'permission', controller: new AbortController(), chunks: [], bytes: 0};
+  prepareAudioContext();
+  const job = {automatic, phase: 'permission', controller: new AbortController(), chunks: [], bytes: 0,
+    noiseFloor: 0, lastVoice: -Infinity, voiceSince: null, heardVoice: false};
   capture = job;
   micPermissionPending = true;
   setStatus('Ready', 'Waiting for microphone permission…');
   updateControls();
   try {
-    job.stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    job.stream = await navigator.mediaDevices.getUserMedia({audio: {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true
+    }});
     if (capture !== job) {
       releaseMic(job);
       return;
@@ -342,8 +415,7 @@ async function startRecording() {
       if (capture !== job || !event.data.size) return;
       job.bytes += event.data.size;
       if (job.bytes > MAX_AUDIO_BYTES) {
-        endCapture(job);
-        setStatus('Error', 'The recording exceeded 8 MiB. Try a shorter recording.');
+        endVoiceSession('Error', 'The recording exceeded 8 MiB. Try a shorter recording.');
         return;
       }
       job.chunks.push(event.data);
@@ -351,8 +423,7 @@ async function startRecording() {
     job.recorder.addEventListener('stop', () => void transcribe(job));
     const fail = () => {
       if (capture !== job || job.phase !== 'recording') return;
-      endCapture(job);
-      setStatus('Error', 'The microphone stopped unexpectedly. Check your input device and try again.');
+      endVoiceSession('Error', 'The microphone stopped unexpectedly. Check your input device and try again.');
     };
     job.recorder.addEventListener('error', fail);
     job.stream.getAudioTracks().forEach(track => track.addEventListener('ended', fail));
@@ -366,12 +437,22 @@ async function startRecording() {
     tick();
     job.clock = setInterval(tick, 200);
     job.deadline = setTimeout(() => finishRecording(job), MAX_RECORD_MS);
-    setStatus('Listening');
-    updateMeter(job);
+    const hasMeter = updateMeter(job);
+    if (job.automatic && !hasMeter) {
+      job.automatic = false;
+      el('auto-send').checked = false;
+      setStatus('Listening', 'Automatic turn detection is unavailable. Select Stop recording when finished.');
+    } else if (job.automatic) {
+      job.idle = setTimeout(() => {
+        if (capture === job && !job.heardVoice) endVoiceSession('Ready', 'Voice session ended after 45 seconds without speech.');
+      }, IDLE_LISTEN_MS);
+      setStatus('Listening', detail || 'Speak when you’re ready.');
+    } else {
+      setStatus('Listening');
+    }
   } catch (error) {
     if (capture !== job) return;
-    endCapture(job);
-    setStatus('Error', microphoneError(error));
+    endVoiceSession('Error', microphoneError(error));
   } finally {
     micPermissionPending = false;
     updateControls();
@@ -380,15 +461,19 @@ async function startRecording() {
 
 el('mic').addEventListener('click', () => void startRecording());
 el('voice-mode').addEventListener('click', () => {
-  voiceMode = !voiceMode;
-  if (!voiceMode) {
-    if (capture) endCapture(capture);
-    stopSpeech();
-    showTranscript();
-    if (chat) chat.allowSpeech = false;
+  if (voiceMode) {
+    endVoiceSession('Ready', 'Voice session ended.');
+    return;
   }
-  if (!chat) setStatus('Ready');
-  updateControls();
+  voiceMode = true;
+  if (!chat) continueConversation();
+  else updateControls();
+});
+
+el('auto-send').addEventListener('change', () => {
+  if (!el('auto-send').checked && capture?.automatic) endCapture(capture);
+  if (!chat && !capture && !speech && !micPermissionPending) continueConversation();
+  else updateControls();
 });
 
 el('stop').addEventListener('click', () => {
@@ -397,17 +482,21 @@ el('stop').addEventListener('click', () => {
     el('stop').disabled = true;
   } else if (capture?.phase === 'recording') {
     finishRecording(capture);
+  } else if (speech) {
+    finishSpeech();
   } else {
-    if (capture) endCapture(capture);
-    stopSpeech();
-    setStatus('Ready');
+    endVoiceSession('Ready', 'Voice session ended.');
   }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && voiceMode) endVoiceSession('Ready', 'Voice session paused when you left this tab.');
 });
 
 el('form').addEventListener('submit', async event => {
   event.preventDefault();
   const text = prompt.value.trim();
-  if (chat || capture || !text) return;
+  if (chat || capture || voiceApproval || !text) return;
   stopSpeech();
   const job = {controller: new AbortController(), allowSpeech: voiceMode};
   chat = job;
@@ -460,6 +549,7 @@ el('form').addEventListener('submit', async event => {
     if (result.pending_approval) {
       answer.remove();
       approval(result.pending_approval);
+      if (voiceMode) voiceApproval = result.pending_approval.id;
     } else {
       answer.classList.remove('waiting');
       answer.textContent = result.answer;
@@ -474,7 +564,7 @@ el('form').addEventListener('submit', async event => {
       setStatus('Ready', 'Generation stopped.');
     } else {
       if (!reply) answer.textContent = 'Could not complete the reply.';
-      setStatus('Error', error.message);
+      endVoiceSession('Error', error.message);
     }
   } finally {
     if (reader) void reader.cancel().catch(() => {});
@@ -482,8 +572,14 @@ el('form').addEventListener('submit', async event => {
     el('stop').disabled = false;
     updateControls();
   }
-  // Only a completed assistant answer is eligible for speech. Tool and approval events stay in the UI.
-  if (job.allowSpeech && result && !result.pending_approval) void speak(result.answer);
+  if (voiceApproval) {
+    // Speak a fixed prompt while the details and approval controls remain in the dashboard.
+    void speak('This action needs your approval. Please choose Approve or Reject on the screen.');
+  } else if (job.allowSpeech && result) {
+    void speak(result.answer);
+  } else if (voiceMode) {
+    continueConversation(job.controller.signal.aborted ? 'Generation stopped.' : '');
+  }
 });
 
 el('document').addEventListener('change', async () => {

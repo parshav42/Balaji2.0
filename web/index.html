@@ -37,6 +37,8 @@
     .voice-toolbar,.voice-settings,.state-row,.state-display{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
     .voice-toolbar,.state-row{justify-content:space-between}
     .voice-toolbar button,.state-row button{min-height:38px;padding:6px 10px;font-size:13px}
+    #voice-mode{min-height:44px;padding:8px 14px;border-color:#5ac9f5;background:#173e56;color:#e2f8ff;font-weight:700}
+    #voice-mode:hover{background:#214f6c}
     .voice-toolbar button[aria-pressed="true"]{border-color:#53c7f9;background:#173f5a;color:#d6f5ff}
     .autosend,.volume{display:flex;align-items:center;gap:6px;font-size:13px;color:#bed1e8;white-space:nowrap}
     .volume input{width:82px}
@@ -100,9 +102,9 @@
   <output id="notice" role="status"></output>
   <section class="console" aria-label="Chat controls" data-state="ready">
     <div class="voice-toolbar">
-      <button id="voice-mode" type="button" aria-pressed="false">Voice Mode: Off</button>
+      <button id="voice-mode" type="button" aria-pressed="false">Start voice conversation</button>
       <div id="voice-settings" class="voice-settings" hidden>
-        <label class="autosend"><input id="auto-send" type="checkbox" checked> Auto-send</label>
+        <label class="autosend"><input id="auto-send" type="checkbox" checked> Hands-free</label>
         <button id="mute" type="button" aria-pressed="false">Mute</button>
         <label class="volume" for="volume">Volume <input id="volume" type="range" min="0" max="100" value="80"></label>
       </div>

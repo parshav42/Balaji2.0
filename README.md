@@ -1,6 +1,6 @@
 # BALAJI — Local AI Personal Assistant (Linux v1.0)
 
-A **free, local-first, portfolio-ready AI agent**. Ollama powers reasoning and tool calling, FastAPI provides a local browser dashboard, SQLite stores conversations/memories/tasks, and optional whisper.cpp + Piper provide **push-to-talk offline voice**. No paid LLM API is needed.
+A **free, local-first, portfolio-ready AI agent**. Ollama powers reasoning and tool calling, FastAPI provides a local browser dashboard, SQLite stores conversations/memories/tasks, and optional whisper.cpp + Piper provide **offline voice conversations**. No paid LLM API is needed.
 
 > **Scope:** BALAJI v1.0 is a complete *local personal-assistant MVP*, not a complete Iron-Man/Jarvis operating-system controller. It does not have wake-word detection, unrestricted desktop control, browser automation, email access or cloud synchronization. Microphone and speaker capabilities require local setup.
 
@@ -12,7 +12,7 @@ A **free, local-first, portfolio-ready AI agent**. Ollama powers reasoning and t
 - **Persistence:** SQLite messages (per chat), tasks, notes, approvals, document chunks.
 - **Local documents:** upload text/Markdown/PDF, chunk + retrieve, provide source markers. Keyword search works with zero embedding models; optional Ollama embeddings add semantic search.
 - **Web dashboard:** streams Ollama replies as they arrive. Includes conversation history, task and memory lists, document upload, and approval controls.
-- **Browser voice:** push-to-talk with a recording timer and level meter, transcript preview, optional auto-send, and Piper playback of completed replies. The dashboard includes Stop, Mute, and volume controls.
+- **Browser voice:** start a hands-free session, speak, and pause to send. BALAJI speaks each completed reply and then starts listening for the next turn. Manual recording and transcript editing are available with Hands-free off.
 - **Linux terminal voice:** ALSA or PulseAudio recording feeds the same local Whisper and Piper installations. Terminal and browser each use the agent’s existing approval flow.
 - **Tests/CI:** mocked LLM and speech models. Automated tests run without model downloads or audio hardware.
 
@@ -140,13 +140,13 @@ Export overrides in the shell that starts BALAJI. For terminal voice, run `pytho
 
 ### Use Voice Mode in the browser
 
-1. Open **http://127.0.0.1:8000**, turn **Voice Mode** on, and click the microphone beside the message field.
+1. Open **http://127.0.0.1:8000** and select **Start voice conversation**.
 2. Select **Allow** when the browser prompts for microphone access. If permission is already blocked, open the site controls next to the address bar, allow **Microphone**, and reload.
-3. Say “Balaji, explain AI agents” and click **Stop recording**. After Whisper finishes, the transcript appears in the dashboard. Turn **Auto-send** off to edit the transcript before pressing **Send**.
-4. Read the streamed reply as it arrives. Piper reads up to 750 characters of the completed answer. If the browser blocks autoplay, select **Play reply**.
-5. Use **Stop generation** to interrupt the stream, or **Stop playback** to stop the audio. Adjust **Volume** or select **Mute**. Voice Mode starts off on each page load, and recording starts only when you click the microphone.
+3. Wait for **Listening**, then say “Explain AI agents” and pause for about a second. BALAJI sends the transcript automatically. You can ask a follow-up when **Listening** returns. The microphone is released while BALAJI transcribes, generates, and speaks its reply.
+4. Piper reads up to 750 characters of the completed answer. Select **Play reply** if the browser blocks autoplay. Use **Stop playback** if you want to move on before the reply finishes.
+5. Select **End voice session** to release the microphone. The session also ends when you leave the tab or stay silent for 45 seconds. Turn off **Hands-free** to use the microphone button and edit the transcript before selecting **Send**.
 
-Requests to change tasks or memories still require clicking **Approve** or **Reject**. Approval details are displayed in the dashboard. The voice endpoints are `POST /api/voice/transcribe` (multipart `file`, WebM/Ogg/MP4/WAV, up to 8 MiB and 60 seconds) and `POST /api/voice/speak` (JSON `{"text":"Hello"}`, up to 750 characters, WAV response).
+Requests to change tasks or memories pause the voice session for approval. Review the action and choose **Approve** or **Reject** on screen. BALAJI speaks the outcome and resumes listening. The voice endpoints are `POST /api/voice/transcribe` (multipart `file`, WebM/Ogg/MP4/WAV, up to 8 MiB and 60 seconds) and `POST /api/voice/speak` (JSON `{"text":"Hello"}`, up to 750 characters, WAV response).
 
 ## 6. Tests
 
@@ -161,9 +161,9 @@ The test suite mocks Ollama, Whisper and Piper. Use the following checklist for 
 ### Manual browser checklist
 
 - [ ] With Voice Mode off, send a typed message and verify that tokens arrive incrementally and the reply is silent.
-- [ ] Enable Voice Mode and allow the microphone. Verify **Listening**, the timer, and the level meter. Stop recording and check **Transcribing**, the transcript, streamed text, and audio playback.
-- [ ] Disable Auto-send and edit the transcript before submitting. Try Stop during generation, Stop during speech, Mute, and volume adjustment. Verify **Play reply** works if autoplay is blocked.
-- [ ] Speak a task or memory request. Verify the data changes only after explicit approval. Reload to verify conversation history and pending approvals are still available.
+- [ ] Start a voice conversation and allow the microphone. Speak, pause, and verify automatic transcription and playback. Ask a second question without clicking anything and verify that the microphone is released during both replies.
+- [ ] Disable Hands-free and edit the transcript before submitting. Try Stop during generation, Stop during speech, Mute, and volume adjustment. Verify **Play reply** works if autoplay is blocked.
+- [ ] Speak a task or memory request. Verify that BALAJI pauses for approval, the data changes only after explicit approval, and the outcome is read aloud. End the session or switch tabs and confirm the microphone is released.
 - [ ] Try microphone denial, an empty recording, and a mobile-sized viewport. Confirm the dashboard shows a clear error, recovers, and keeps the tasks, memories, and documents accessible.
 
 ## 7. Project layout
