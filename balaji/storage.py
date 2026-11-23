@@ -46,6 +46,7 @@ def init_db() -> None:
           arguments TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
           result TEXT, created_at TEXT NOT NULL);
         """)
+        db.executescript(Path(__file__).with_name("v2.sql").read_text(encoding="utf-8"))
 
 
 def add_message(session: str, role: str, content: str) -> None:
@@ -75,15 +76,27 @@ def clear_history(session: str) -> None:
         db.execute("DELETE FROM messages WHERE session_id=?", (session,))
 
 
-def add_note(fact: str) -> int:
+def memory_enabled(db: sqlite3.Connection, category: str) -> bool:
+    row = db.execute("SELECT enabled FROM memory_settings WHERE category=?", (category,)).fetchone()
+    return bool(row[0]) if row else True
+
+
+def add_note(fact: str, category: str = "saved_notes") -> int:
     with connection() as db:
+        if not memory_enabled(db, category):
+            raise ValueError("This memory category is disabled.")
         cur = db.execute("INSERT INTO notes(fact,created_at) VALUES(?,?)", (fact, now()))
-        return int(cur.lastrowid)
+        note_id = int(cur.lastrowid)
+        db.execute("INSERT INTO memory_categories VALUES(?,?)", (note_id, category))
+        return note_id
 
 
 def notes(keyword: str = "", limit: int = 30) -> list[dict]:
     with connection() as db:
-        rows = db.execute("SELECT id,fact,created_at FROM notes WHERE fact LIKE ? ORDER BY id DESC LIMIT ?",
+        rows = db.execute("""SELECT n.id,n.fact,n.created_at FROM notes n
+                             LEFT JOIN memory_categories c ON c.note_id=n.id
+                             LEFT JOIN memory_settings s ON s.category=COALESCE(c.category,'saved_notes')
+                             WHERE n.fact LIKE ? AND COALESCE(s.enabled,1)=1 ORDER BY n.id DESC LIMIT ?""",
                           (f"%{keyword}%", limit)).fetchall()
     return [dict(r) for r in rows]
 
