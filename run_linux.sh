@@ -8,4 +8,4 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 printf '\nBALAJI model: %s\n' "${BALAJI_MODEL:-qwen3:1.7b}"
 printf 'Make sure Ollama is running and the model is downloaded.\n'
-exec python -m uvicorn server:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log
+exec python -m uvicorn server:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log --timeout-graceful-shutdown 8

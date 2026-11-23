@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+from threading import Lock
 
 from . import config, storage
 
@@ -19,12 +20,26 @@ APPS = {
 READABLE = {".txt", ".md", ".pdf"}
 DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 FILE_LIMIT = 512 * 1024
+cpu_lock = Lock()
+previous_cpu: tuple[int, int] | None = None
+
+
+def cpu_usage() -> float | None:
+    global previous_cpu
+    with cpu_lock, open("/proc/stat", encoding="ascii") as source:
+        ticks = [int(value) for value in source.readline().split()[1:9]]
+        total = sum(ticks)
+        busy = total - ticks[3] - ticks[4]
+        previous, previous_cpu = previous_cpu, (total, busy)
+        if previous and total > previous[0]:
+            return round(100 * (busy - previous[1]) / (total - previous[0]), 1)
+        return None
 
 
 def laptop_status() -> dict:
     data = {"platform": "Linux", "session": os.environ.get("XDG_SESSION_TYPE", "unknown"),
             "desktop_available": bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")),
-            "load_1m": round(os.getloadavg()[0], 2), "logical_cpus": os.cpu_count()}
+            "load_1m": round(os.getloadavg()[0], 2), "cpu_percent": cpu_usage(), "logical_cpus": os.cpu_count()}
     mem = {}
     with open("/proc/meminfo", encoding="ascii") as source:
         for line in source:
@@ -172,3 +187,31 @@ def launch(app: str, project_name: str = "") -> str:
 def report_tasks() -> str:
     rows = [r["description"] for r in storage.tasks(include_done=True) if r["completed"]]
     return "\n".join(f"- {description}" for description in rows[:40]) or "No completed tasks are available."
+
+
+def search_project_files(project_name: str, query: str) -> str:
+    query = query.strip().casefold()
+    if not 1 <= len(query) <= 120:
+        raise ValueError("Enter a file-name search term of 1–120 characters.")
+    root = project(project_name)
+    matches: list[str] = []
+    visited = 0
+    pending = [[]]
+    while pending and len(matches) < 30 and visited < 1500:
+        parts = pending.pop()
+        try:
+            with directory(root, parts) as fd, os.scandir(fd) as entries:
+                for entry in entries:
+                    visited += 1
+                    if not entry.name.startswith(".") and not entry.is_symlink():
+                        child = [*parts, entry.name]
+                        if entry.is_dir(follow_symlinks=False) and len(parts) < 5:
+                            pending.append(child)
+                        elif Path(entry.name).suffix.lower() in READABLE and query in entry.name.casefold():
+                            matches.append("/".join(child))
+                    if len(matches) >= 30 or visited >= 1500:
+                        break
+        except FileNotFoundError:
+            if not parts:
+                raise
+    return "\n".join(sorted(matches)) or "No matching readable file names within the search limit."

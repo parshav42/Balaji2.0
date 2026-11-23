@@ -40,12 +40,6 @@ def audit(run_id: str | None, actor: str, action: str, status: str) -> None:
                    (run_id, actor, action, status, int(time.time())))
 
 
-def link_approval(run_id: str | None, token: str) -> None:
-    if run_id:
-        with closing(storage.connection()) as db, db:
-            db.execute("INSERT INTO run_approvals VALUES(?,?)", (token, run_id))
-
-
 def approval_run(token: str) -> str | None:
     with closing(storage.connection()) as db:
         row = db.execute("SELECT run_id FROM run_approvals WHERE approval_id=?", (token,)).fetchone()

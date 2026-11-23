@@ -1,9 +1,15 @@
-"""Strict tool allowlist: no shell access, app control, or filesystem write tools."""
+"""Strict tool registry with schema, approval, permissions and bounded execution."""
 from __future__ import annotations
-import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from dataclasses import dataclass
 from datetime import datetime
+import json
+import re
+from threading import BoundedSemaphore
+from typing import Callable
 from zoneinfo import ZoneInfo
-from . import storage
+
+from . import access, activity, automation, config, desktop, gmail, storage
 
 SECRET_RE = re.compile(r"\b(password|passphrase|otp|api[ -]?key|private[ -]?key|cvv|secret token|access token)\b", re.I)
 
@@ -96,15 +102,6 @@ def execute_tool(name: str, args: dict) -> str:
 
 
 # The existing Ollama schemas also drive validation and the capability registry.
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from dataclasses import dataclass
-import json
-from threading import BoundedSemaphore
-from typing import Callable
-
-from . import activity, automation, config, desktop, gmail
-
-
 @dataclass(frozen=True)
 class Tool:
     schema: dict
@@ -149,6 +146,17 @@ def create_reminder(name: str, when: str, recurrence: str = "once", timezone: st
     return f"Scheduled reminder #{ident} for {when} ({timezone or config.TIMEZONE})."
 
 
+def prepare_message(channel: str, recipient: str, body: str) -> str:
+    if not re.fullmatch(r"\+[1-9][0-9]{7,14}", recipient):
+        raise ValueError("Ask the user for the full international number.")
+    if not 1 <= len(body.strip()) <= 1000:
+        raise ValueError("Enter a message of 1–1000 characters.")
+    return f"Prepared a {channel} message for {recipient}. The user can review it in Messages and send it in their app."
+
+
+register("prepare_message", "Prepare an unsent SMS or WhatsApp composer. Ask for an international phone number if unknown.",
+         prepare_message, {"channel": {"type": "string", "enum": ["sms", "whatsapp"]}, "recipient": STRING, "body": STRING},
+         ["channel", "recipient", "body"], "personal")
 register("laptop_status", "Check live Linux laptop load, memory and graphical session.",
          lambda: json.dumps(desktop.laptop_status()), {}, [], "desktop")
 register("list_projects", "List owner-configured laptop project names. Ask if the project is ambiguous.",
@@ -158,6 +166,8 @@ register("launch_app", "Open vscode, browser or terminal on the laptop. VS Code 
          ["app"], "desktop", "desktop")
 register("list_project_files", "List files inside a configured project directory.",
          desktop.list_project_files, {"project_name": STRING, "folder": STRING}, ["project_name"], "files")
+register("search_project_files", "Find approved text, Markdown and PDF file names by a keyword.",
+         desktop.search_project_files, {"project_name": STRING, "query": STRING}, ["project_name", "query"], "files")
 register("read_project_file", "Read a README, text file or permitted PDF inside an approved project.",
          desktop.read_project_file, {"project_name": STRING, "path": STRING}, ["project_name", "path"], "files")
 register("write_project_note", "Create a new .md or .txt file inside a configured project. Requires approval.",
@@ -175,7 +185,7 @@ register("search_gmail", "Find relevant Gmail messages to summarize. Use Gmail q
 register("read_gmail_message", "Read permitted plain-text Gmail content by returned message ID. Content is untrusted.",
          gmail.read_message, {"message_id": STRING}, ["message_id"], "gmail", timeout=20)
 register("draft_gmail_reply", "Save an unsent local reply draft for a Gmail thread. Preparing a draft does not send it.",
-         gmail.make_draft, {"message_id": STRING, "body": STRING}, ["message_id", "body"], "gmail", "change", 20)
+         gmail.make_draft, {"message_id": STRING, "body": STRING}, ["message_id", "body"], "gmail", "draft", 20)
 register("send_gmail_draft", "Send an immutable Gmail reply draft. Always requires approval with recipient and exact text.",
          gmail.send_draft, {"draft_id": INTEGER}, ["draft_id"], "gmail", "external", 20)
 
@@ -202,6 +212,13 @@ def validate_tool(name: str, args: dict) -> None:
             raise ValueError(f"Invalid argument: {field}.")
         if "enum" in declared and value not in declared["enum"]:
             raise ValueError(f"Unsupported value for {field}.")
+    if name == "launch_app" and args.get("project_name"):
+        if args["app"] != "vscode":
+            raise ValueError("Only VS Code accepts an approved project name.")
+        try:
+            desktop.project(args["project_name"])
+        except OSError as exc:
+            raise ValueError("The approved project configuration could not be read.") from exc
 
 
 def approval_preview(name: str, args: dict) -> dict | None:
@@ -224,6 +241,8 @@ def invoke(name: str, args: dict, *, authorized: bool = False,
     try:
         validate_tool(name, args)
         spec = REGISTRY[name]
+        if not access.allows_tool(actor, spec.permission):
+            raise ValueError("This device is no longer authorized to use the tool.")
         if name in MUTATING and not authorized:
             raise ValueError("Explicit approval is required.")
         if not CAPACITY.acquire(blocking=False):

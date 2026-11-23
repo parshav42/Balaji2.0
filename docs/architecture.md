@@ -1,28 +1,27 @@
-# BALAJI v1.0 — Architecture and trade-offs
+# BALAJI 2.0 architecture
 
-```mermaid
+~~~mermaid
 flowchart TD
-  U[User terminal or browser] --> API[CLI or FastAPI]
-  API --> A[Agent loop]
-  A --> M[Local Ollama LLM]
-  M --> A
-  A --> TOOL[Allowlisted tool dispatch]
-  TOOL --> DB[(SQLite: notes / tasks / history / approvals)]
-  TOOL --> RAG[RAG: keyword + optional local embeddings]
-  RAG --> DB
-  A --> GUARD{Mutating tool?}
-  GUARD -->|yes| H[Human approval]
-  H --> TOOL
-  V[Microphone] --> STT[whisper.cpp]
-  STT --> A
-  A --> TTS[Piper voice]
-```
+  Phone[Paired phone PWA] --> Serve[Private Tailscale Serve HTTPS]
+  Serve --> API[FastAPI on laptop loopback]
+  Laptop[Laptop browser] --> API
+  API --> Agent[Ollama streaming agent]
+  API --> Voice[Whisper.cpp and Piper]
+  API --> Live[Authenticated SSE snapshots]
+  Agent --> Registry[Schema-validated tool registry]
+  Registry --> Gate{Sensitive action?}
+  Gate -->|Yes| Approval[SQLite approval and audit]
+  Gate -->|Read or local draft| Action[Bounded tool execution]
+  Approval --> Action
+  Action --> Files[Allowlisted Linux project roots]
+  Action --> Gmail[OAuth-authenticated Gmail API]
+  Action --> DB[(SQLite)]
+  Jobs[Persistent scheduler] --> DB
+  DB --> Live
+~~~
 
-- **Design intent:** deliver an inspectable, end-to-end agent MVP that runs on Linux and doesn't require API subscription fees.
-- **Agent control:** bounded to 5 model turns; only explicitly exposed tool names accepted; parameters checked against schemas; tools cannot run shell commands or delete files.
-- **Approvals:** terminal path blocks for explicit yes/no; browser path stores a pending approval token and waits for explicit action. Approval execution transitions atomically to `processing`, which avoids duplicate execution from repeated approve requests. Multi-step agent plans need a follow-up user request after browser approval.
-- **Storage:** single-user local SQLite. Concurrency is adequate for one local browser / terminal user, but not a distributed multi-user service.
-- **RAG:** keyword matching works without an embedding model. Optional local `/api/embed` vectors improve semantic retrieval. The retrieved passages are presented as untrusted data; source references are filenames/page/chunk labels. No claimed benchmark for retrieval quality.
-- **Voice:** ALSA/PulseAudio recording, 16kHz mono WAV, whisper.cpp CLI transcription, Piper synthesis, aplay; hardware and environment dependencies are external to the Python unit tests.
-- **Threat model:** local-only machine; no public API authentication; malicious uploaded documents may contain prompt injections, so don't use the current app for high-impact autonomous decisions. Do not expose its API to a network without additional security.
-- **Next production milestone:** stronger auth, encrypted or segmented personal data, observability/evaluations, LangGraph checkpoints, improved RAG recall, automatic approval-resume and desktop integrations with scoped permissions.
+- Access uses one-use enrollment codes, owner review, and hashed opaque browser credentials. Remote cookies are Secure and HttpOnly. State-changing authenticated requests must match the configured origin. Device sessions are checked again on each SSE snapshot.
+- Runs transition through `RECEIVED`, `PLANNING`, `EXECUTING`, `WAITING_FOR_APPROVAL`, `RESUMING` and a terminal state. Chat idempotency keys identify submissions. SQLite claims approvals atomically before executing tools. Uncertain results stay recorded for review.
+- The desktop tool registry uses fixed executables and structured arguments. Project reads and writes use directory descriptors with symlinks disabled. New files use exclusive creates.
+- Gmail OAuth state is single-use and tied to the owner session. Credentials live outside SQLite in a private file. Drafts live separately from memory. Outbound email requires an approval of the exact recipient, subject, and body.
+- The scheduler records delivery and advances recurring jobs together in SQLite. The PWA caches only the public app shell. Device sessions, user data and actions use the live laptop.

@@ -1,138 +1,27 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BALAJI · Personal Agent</title>
-  <meta name="theme-color" content="#080e1c">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070D1A">
+  <title>BALAJI · Personal Assistant</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <style>
-    :root{font-family:system-ui,Inter,Segoe UI,Arial,sans-serif;color:#e8eef6;background:#0b101a;color-scheme:dark}
-    *{box-sizing:border-box}body{margin:0}.app{display:grid;grid-template-columns:270px 1fr;min-height:100vh}
-    aside{background:#111a29;border-right:1px solid #223246;padding:28px 18px;display:flex;flex-direction:column;gap:19px}
-    .brand{display:flex;align-items:center;gap:10px;font-size:25px;font-weight:800;letter-spacing:1px}
-    .orb{height:34px;width:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c6faff,#18c9bc 45%,#0c345b 73%);box-shadow:0 0 26px #20d4c0aa}
-    .sub{color:#8c9bb0;font-size:12px;letter-spacing:1px;text-transform:uppercase}
-    .box{background:#141f30;border:1px solid #253952;border-radius:15px;padding:15px;min-width:0}
-    .pill{font-size:12px;border-radius:999px;background:#06443d;color:#a0ffdb;padding:5px 10px;display:inline-block}
-    button,input{font:inherit}button{background:#142d3a;color:#c9f6ec;border:1px solid #2a736f;border-radius:9px;padding:10px 13px;cursor:pointer}button:hover{background:#214854}
-    main{max-width:1150px;width:100%;margin:auto;padding:22px 30px;height:100vh;display:flex;flex-direction:column;gap:14px}
-    h1,h2,h3,p{margin:0}h1{font-size:25px}h3{font-size:14px;margin-bottom:12px}h2{font-size:16px}
-    .heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
-    .heading p{font-size:13px;color:#92a7c1;margin-top:7px}
-    #chat{flex:1;overflow:auto;border:1px solid #223346;border-radius:18px;background:linear-gradient(150deg,#101927,#0d1621);padding:25px;display:flex;flex-direction:column;gap:17px;min-height:250px}
-    .msg{max-width:85%;padding:13px 16px;border-radius:15px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;font-size:14px}
-    .user{align-self:flex-end;background:#146259;color:#f3fffc;border-bottom-right-radius:3px}
-    .assistant{align-self:flex-start;background:#1b2b40;color:#ebf3ff;border-bottom-left-radius:3px}
-    .assistant.waiting{color:#b3c4d9}
-    button:disabled{opacity:.6;cursor:default}
-    .chat-form{display:flex;gap:9px}.chat-form input{background:#121e2c;border:1px solid #2b4359;border-radius:12px;padding:16px;color:#f3fbff;flex:1;min-width:0}
-    .upload{width:100%;font-size:12px;display:block;margin-top:9px}#documents,#tasks,#memories{font-size:13px;color:#b3c4d9;line-height:1.6;max-height:185px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-    #status{font-size:12px;color:#8cb4ad;min-height:18px}.action{display:flex;gap:9px;margin-top:8px;flex-wrap:wrap}.danger{border-color:#b06b6b;color:#ffbbbb}
-    footer{color:#69829d;font-size:11px;text-align:center}.mobilehead{display:none}
-    [hidden]{display:none!important}
-    button:focus-visible,input:focus-visible{outline:2px solid #72dfff;outline-offset:2px}
-    #resources{display:grid;gap:12px}
-    #resources-toggle{display:none}
-    main{min-width:0}
-    #chat{min-height:120px}
-    .console{background:linear-gradient(145deg,#122135,#101824);border:1px solid #294563;border-radius:16px;padding:12px;display:grid;gap:9px}
-    .voice-toolbar,.voice-settings,.state-row,.state-display{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-    .voice-toolbar,.state-row{justify-content:space-between}
-    .voice-toolbar button,.state-row button{min-height:38px;padding:6px 10px;font-size:13px}
-    #voice-mode{min-height:44px;padding:8px 14px;border-color:#5ac9f5;background:#173e56;color:#e2f8ff;font-weight:700}
-    #voice-mode:hover{background:#214f6c}
-    .voice-toolbar button[aria-pressed="true"]{border-color:#53c7f9;background:#173f5a;color:#d6f5ff}
-    .autosend,.volume{display:flex;align-items:center;gap:6px;font-size:13px;color:#bed1e8;white-space:nowrap}
-    .volume input{width:82px}
-    .console input{accent-color:#60ccff}
-    #notice,#voice-detail,#transcript{font-size:13px;color:#bed1e8;overflow-wrap:anywhere}
-    #notice:empty{display:none}
-    #transcript{padding:7px 9px;border-left:2px solid #54bbec;max-height:4.8rem;overflow:auto}
-    #status,#timer{color:#c4eafc;font-size:13px}
-    #timer{font-variant-numeric:tabular-nums}
-    .state-dot{width:8px;height:8px;border-radius:50%;background:#62d7e7;box-shadow:0 0 10px #53cfff80}
-    [data-state="listening"] .state-dot,[data-state="listening"] #mic,[data-state="speaking"] .state-dot{animation:pulse 1s ease-in-out infinite alternate}
-    [data-state="listening"] .state-dot{background:#ff8da2}
-    [data-state="error"] .state-dot{background:#ff8da2;box-shadow:none}
-    [data-state="error"] #voice-detail{color:#ffc7d1}
-    .meter{width:38px;height:22px;display:flex;align-items:center;gap:3px}
-    .meter i{height:85%;width:4px;background:#64d6ff;border-radius:3px;transform:scaleY(var(--level,.18));transition:transform .08s}
-    .meter i:nth-child(even){height:64%}
-    [data-state="speaking"] .meter i{animation:speaking .45s ease-in-out infinite alternate}
-    [data-state="speaking"] .meter i:nth-child(even){animation-delay:.22s}
-    .chat-form input{padding:12px}
-    #mic{display:grid;place-items:center;min-width:46px}
-    .mic-icon{width:16px;height:14px;border:2px solid currentColor;border-top:0;border-radius:0 0 10px 10px;position:relative;margin-top:4px}
-    .mic-icon::before,.mic-icon::after{content:"";position:absolute;left:50%;transform:translateX(-50%);background:currentColor}
-    .mic-icon::before{width:7px;height:14px;border-radius:6px;bottom:2px}
-    .mic-icon::after{width:2px;height:5px;top:12px}
-    @keyframes pulse{to{box-shadow:0 0 15px #62d7e7ab}}
-    @keyframes speaking{to{transform:scaleY(1)}}
-    @media(prefers-reduced-motion:reduce){.console *, .console *::before{animation:none!important;transition:none!important}}
-    @media(max-width:760px){
-      .app{display:flex;flex-direction:column;min-height:100dvh}
-      aside{padding:12px;gap:8px}
-      .brand{font-size:19px}
-      .sidebar-note{display:none}
-      #resources-toggle{display:block;align-self:flex-start;padding:6px 10px;font-size:13px}
-      #resources-toggle[aria-expanded="false"] + #resources{display:none}
-      main{height:auto;flex:1;margin:0 auto;padding:12px;gap:9px}
-      .heading h1{font-size:20px}
-      .heading p{display:none}
-      #chat{flex:1 0 28dvh;padding:12px;max-height:55dvh}
-      .msg{max-width:95%}
-      .console{padding:9px}
-    }
-    :root{background:#080e1c;color:#e8f4ff}
-    body{background:radial-gradient(ellipse at 50% 0,#102842 0,transparent 64%),#080e1c;min-height:100dvh}
-    .app{grid-template-columns:210px minmax(0,1fr) 250px;align-items:start}
-    aside.nav,.telemetry{min-height:100dvh;background:#0b1425de;padding:22px 16px}
-    .telemetry{border-left:1px solid #21354c;border-right:0}
-    .nav nav{display:grid;gap:3px}
-    .nav a{padding:9px 10px;border-radius:8px;color:#b8cee6;font-size:14px;text-decoration:none}
-    .nav a:hover,.nav a[aria-current]{background:#15324c;color:#a5ebff}
-    main{height:auto;margin:0 auto;min-height:100dvh;padding:25px;max-width:1150px}
-    #chat{min-height:250px;height:clamp(250px,35vh,520px);flex:none}
-    .hero{display:flex;align-items:center;gap:20px;background:linear-gradient(120deg,#0c1830,#122c45);border:1px solid #274c6c;border-radius:16px;padding:16px 18px}
-    .hero h2{font-size:18px;margin-bottom:5px}
-    .hero p,.telemetry p,.panel p,.panel label,.lock p{color:#a6bcd3;font-size:14px;line-height:1.5}
-    .core{width:62px;height:62px;flex:none;border-radius:50%;background:radial-gradient(circle at 32% 27%,#ccfaff,#33c4ff 30%,#1659aa 62%,#091b4f 76%);box-shadow:0 0 24px #32c3f966,inset 0 0 0 1px #90e8fa80}
-    .hero[data-state="listening"] .core,.hero[data-state="speaking"] .core,.hero[data-state="thinking"] .core,.hero[data-state="executing"] .core{animation:pulse 1s ease-in-out infinite alternate}
-    .hero[data-state="offline"] .core,.hero[data-state="error"] .core{filter:grayscale(.85);box-shadow:none}
-    .hero[data-state="approval needed"] .core{filter:hue-rotate(167deg)}
-    .panel,.lock{border:1px solid #294563;background:#111e31;border-radius:14px;padding:18px;display:grid;gap:12px;min-width:0}
-    .panel h2{font-size:17px}
-    .lock{width:min(94vw,470px);margin:12vh auto 0}
-    .panel form,.lock form,.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .panel input,.panel select,.panel textarea,.lock input{border:1px solid #33526d;background:#09172a;color:#e6f6ff;border-radius:8px;padding:9px;min-width:0;font:inherit}
-    .panel textarea{width:100%;min-height:70px}
-    .rows{display:grid;gap:8px;list-style:none;padding:0;margin:0}
-    .rows li,.rows details{border:1px solid #294158;background:#0c1829;border-radius:8px;padding:10px;overflow-wrap:anywhere}
-    .rows li button{margin-left:6px;margin-top:6px}
-    .telemetry .box{display:grid;gap:8px}
-    .telemetry output{font-size:13px;color:#bce5fd}
-    #network{padding:9px 12px;background:#492d37;color:#ffe1e6;border-radius:9px}
-    .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-    @media(prefers-reduced-motion:reduce){.core{animation:none!important}}
-    @media(max-width:1150px){.app{grid-template-columns:175px minmax(0,1fr)}.telemetry{grid-column:2;min-height:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:760px){
-      .app{display:flex;flex-direction:column}
-      aside.nav,.telemetry{min-height:auto;width:100%;padding:12px}
-      .nav nav{display:flex;overflow:auto;white-space:nowrap}
-      .nav a{flex:none}
-      main{padding:10px;min-height:unset}
-      #chat{height:36dvh;min-height:190px}
-      .hero{padding:12px}.core{width:48px;height:48px}
-      .telemetry{grid-template-columns:repeat(2,minmax(0,1fr))}
-      #voice-mode{min-height:48px}
-    }
-  </style>
+  <link rel="stylesheet" href="/assistant.css">
 </head>
 <body>
+<svg class="sr-only" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="icon-brand" viewBox="0 0 24 24"><path d="m12 2 8.7 5v10L12 22l-8.7-5V7zM3.3 7 12 12l8.7-5M12 12v10m-4.4-7.5 4.4-2.5 4.4 2.5V9.5L12 7 7.6 9.5z"/></symbol>
+  <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M5 8h14M5 16h14"/></symbol>
+  <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1m-7 8v3m-3 0h6"/></symbol>
+  <symbol id="icon-send" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+  <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15 15 4 4"/></symbol>
+  <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+</svg>
 <section class="lock" id="access-panel" aria-label="BALAJI device access">
-  <h1>BALAJI</h1>
+  <h1 class="brand"><svg class="icon" aria-hidden="true"><use href="#icon-brand"/></svg>BALAJI</h1>
   <p id="access-status" role="status">Connecting to the laptop…</p>
   <form id="enroll" hidden>
     <label>Device name <input name="name" maxlength="60" required autocomplete="off"></label>
@@ -141,56 +30,123 @@
   </form>
 </section>
 <div class="app" id="workspace" hidden>
-<aside class="nav">
-  <div class="brand"><div class="orb" aria-hidden="true"></div>BALAJI</div>
-  <nav aria-label="Workspace">
-    <a href="#dashboard" aria-current="page">Dashboard</a><a href="#chat">AI Chat</a><a href="#voice">Voice Assistant</a>
-    <a href="#agent-tasks">Agent Tasks</a><a href="#automations">Automations</a><a href="#devices">Connected Devices</a>
-    <a href="#files">Files</a><a href="#email">Email</a><a href="#messages">Messages</a><a href="#memory">Memory</a>
-    <a href="#activity">Activity History</a><a href="#integrations">Integrations</a><a href="#settings">Settings</a>
-  </nav>
-  <button id="install" type="button" hidden>Install BALAJI</button>
-</aside>
-<main id="dashboard">
-  <div class="heading"><div><h1>Personal workspace</h1><p>Chat with BALAJI and manage work on your laptop.</p></div><button id="newchat">New conversation</button></div>
-  <div class="hero" id="voice" data-state="ready">
-    <div class="core" aria-hidden="true"></div>
-    <div><h2>BALAJI</h2><p id="orb-state">Idle</p></div>
-  </div>
-  <p id="network" role="status" hidden>Laptop unreachable. Waiting to reconnect.</p>
-  <section id="chat" aria-live="polite"><div class="msg assistant">Hello! I'm BALAJI. Ask me something, upload documents, or tell me to manage tasks. I'll request approval before saving or modifying data.</div></section>
-  <output id="notice" role="status"></output>
-  <section class="console" aria-label="Chat controls" data-state="ready">
-    <div class="voice-toolbar">
-      <button id="voice-mode" type="button" aria-pressed="false">Start voice conversation</button>
-      <div id="voice-settings" class="voice-settings" hidden>
-        <label class="autosend"><input id="auto-send" type="checkbox" checked> Hands-free</label>
-        <button id="mute" type="button" aria-pressed="false">Mute</button>
-        <label class="volume" for="volume">Volume <input id="volume" type="range" min="0" max="100" value="80"></label>
-      </div>
+  <header class="topbar">
+    <span class="brand"><svg class="icon" aria-hidden="true"><use href="#icon-brand"/></svg>BALAJI</span>
+    <div class="header-actions">
+      <button id="connection" class="connection" type="button" data-network="connecting" aria-haspopup="dialog" title="Open device and network status">
+        <span class="connection-dot" aria-hidden="true"></span><span id="connection-label">Connecting</span>
+      </button>
+      <button id="menu" class="icon-button menu" type="button" aria-label="Open control center" aria-haspopup="dialog" aria-keyshortcuts="Control+k Meta+k" title="Control center (Ctrl/⌘+K)">
+        <svg class="icon" aria-hidden="true"><use href="#icon-menu"/></svg>
+      </button>
     </div>
-    <div class="state-row">
-      <div class="state-display">
-        <span class="state-dot" aria-hidden="true"></span>
-        <span id="status" role="status">Ready</span>
-        <div id="meter" class="meter" aria-hidden="true" hidden><i></i><i></i><i></i><i></i><i></i></div>
+  </header>
+  <main id="dashboard">
+    <section class="stage" id="voice" data-state="ready" aria-labelledby="greeting">
+      <div class="identity">
+        <div class="core" aria-hidden="true">
+          <span class="core-aura"></span>
+          <svg class="core-art" viewBox="0 0 240 240">
+            <defs>
+              <radialGradient id="core-fill" cx="48%" cy="45%" r="55%">
+                <stop stop-color="#173a56"/><stop offset=".7" stop-color="#102742"/><stop offset="1" stop-color="#091627"/>
+              </radialGradient>
+              <linearGradient id="core-edge" x2="100%" y2="100%">
+                <stop stop-color="#aff2ff"/><stop offset=".48" stop-color="#285575"/><stop offset="1" stop-color="#77dedb"/>
+              </linearGradient>
+            </defs>
+            <circle cx="120" cy="120" r="109" class="orbit-guide"/>
+            <circle cx="120" cy="120" r="98" class="orbit-ticks"/>
+            <circle cx="120" cy="120" r="89" class="orbit-guide"/>
+            <g class="orbit-motion">
+              <path d="M33 120a87 87 0 0 1 87-87m87 87a87 87 0 0 1-87 87" class="orbit-arc"/>
+              <circle cx="120" cy="33" r="2.5"/><circle cx="120" cy="207" r="2.5"/>
+            </g>
+            <g class="orbit-counter">
+              <path d="M53 103a69 69 0 0 1 50-50m84 84a69 69 0 0 1-50 50" class="orbit-arc"/>
+            </g>
+            <g class="core-lens">
+              <circle cx="120" cy="120" r="60" fill="url(#core-fill)" stroke="url(#core-edge)"/>
+              <circle cx="120" cy="120" r="52" class="orbit-guide"/>
+              <path class="core-trace" d="m120 83 32 18v38l-32 18-32-18v-38zM88 101l32 19 32-19m-32 19v37m0-74v18m-32 38 16-9m48 9-16-9"/>
+              <path class="core-heart" d="m120 102 16 9v18l-16 9-16-9v-18z"/>
+              <circle class="core-light" cx="120" cy="120" r="4"/>
+            </g>
+          </svg>
+        </div>
+        <h1 id="greeting">How can I help you?</h1>
+        <div class="state" role="status">
+          <span id="status"><span class="state-dot" aria-hidden="true"></span><span id="orb-state">Idle</span></span>
+          <span id="voice-detail" hidden></span>
+        </div>
         <time id="timer" hidden>0:00</time>
       </div>
-      <button id="retry" type="button" hidden>Check last request</button>
-      <button id="play" type="button" hidden>Play reply</button>
-      <button id="stop" class="danger" type="button" hidden>Stop</button>
-    </div>
-    <p id="voice-detail" role="status" hidden></p>
-    <p id="transcript" role="status" hidden></p>
-    <form class="chat-form" id="form">
-      <input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Ask BALAJI anything..." aria-label="Message">
-      <button id="mic" type="button" aria-label="Start microphone recording" title="Start microphone recording" hidden><span class="mic-icon" aria-hidden="true"></span></button>
-      <button id="send" type="submit">Send</button>
-    </form>
-    <audio id="speaker" preload="none" hidden></audio>
-  </section>
-  <section class="panel" id="agent-tasks"><h2>Agent Tasks</h2><div id="tasks">No tasks yet</div><h3>Pending approvals</h3><ul id="approvals-list" class="rows"></ul></section>
-  <section class="panel" id="automations"><h2>Automations</h2>
+    </section>
+    <section id="chat" aria-label="Conversation" tabindex="0" hidden></section>
+    <div id="reply-announcement" class="sr-only" role="status"></div>
+    <section class="composer" aria-label="Message controls">
+      <output id="notice" role="status"></output>
+      <p id="transcript" role="status" hidden></p>
+      <div class="recovery">
+        <button id="retry" type="button" hidden>Check last request</button>
+        <button id="retry-fresh" type="button" hidden>Retry as new run</button>
+        <button id="play" type="button" hidden>Play reply</button>
+      </div>
+      <form class="chat-form" id="form">
+        <input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Message BALAJI" aria-label="Message">
+        <button id="mic" class="icon-button microphone" type="button" aria-label="Start recording" title="Start recording">
+          <svg class="icon" aria-hidden="true"><use href="#icon-mic"/></svg>
+        </button>
+        <button id="send" class="icon-button send" type="submit" aria-label="Send message" title="Send message">
+          <svg class="icon" aria-hidden="true"><use href="#icon-send"/></svg>
+        </button>
+        <button id="stop" class="icon-button stop" type="button" aria-label="Stop" title="Stop" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#icon-stop"/></svg>
+        </button>
+      </form>
+      <audio id="speaker" preload="none" hidden></audio>
+    </section>
+  </main>
+  <dialog id="control-center" aria-labelledby="control-title">
+    <header class="drawer-header">
+      <h2 id="control-title">Control center</h2>
+      <button id="close-control" class="icon-button" type="button" aria-label="Close control center" title="Close control center">
+        <svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg>
+      </button>
+    </header>
+    <div class="drawer-body">
+      <div id="palette">
+        <label class="palette-search">
+          <svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg>
+          <input id="command-search" type="search" placeholder="Search controls" aria-label="Search controls" autocomplete="off">
+        </label>
+        <nav id="commands" aria-label="Control center sections">
+          <button type="button" data-panel="conversations" data-keywords="chat history new">Conversations</button>
+          <button type="button" data-panel="agent-tasks" data-keywords="permissions approvals actions">Agent tasks</button>
+          <button type="button" data-panel="automations" data-keywords="reminders schedules">Automations</button>
+          <button type="button" data-panel="files" data-keywords="documents projects upload download">Files</button>
+          <button type="button" data-panel="email" data-keywords="gmail drafts">Email</button>
+          <button type="button" data-panel="messages" data-keywords="sms whatsapp compose">Messages</button>
+          <button type="button" data-panel="devices" data-keywords="network laptop mobile phone pairing status cpu ram">Devices</button>
+          <button type="button" data-panel="memory" data-keywords="notes preferences export">Memory</button>
+          <button type="button" data-panel="integrations" data-keywords="ollama whisper piper gmail">Integrations</button>
+          <button type="button" data-panel="activity" data-keywords="audit runs log">Activity</button>
+          <button type="button" data-panel="settings" data-keywords="voice microphone audio mute volume hands-free sign out install">Settings</button>
+        </nav>
+        <p id="no-commands" role="status" hidden>No matching controls.</p>
+      </div>
+      <button id="back-control" type="button" hidden>← All controls</button>
+      <output id="control-notice" role="status"></output>
+      <section class="panel" id="conversations" hidden>
+        <h2>Conversations</h2>
+        <div class="controls">
+          <button id="newchat" type="button">New conversation</button>
+          <button id="clear-history" type="button" hidden>Clear this conversation’s history</button>
+        </div>
+        <ul class="rows" id="conversation-list"></ul>
+      </section>
+  <section class="panel" hidden id="agent-tasks"><h2>Agent tasks</h2><div class="summary"><output id="current-run">Idle</output><output id="pending-count"></output></div><div id="tasks">No tasks yet</div><h3>Pending approvals</h3><ul id="approvals-list" class="rows"></ul></section>
+  <section class="panel" hidden id="automations"><h2>Automations</h2><output id="next-job">No scheduled reminders</output>
     <form id="new-job">
       <input name="name" aria-label="Automation name" placeholder="Practise interview questions" maxlength="300" required>
       <input name="when" type="datetime-local" aria-label="Start date and time" required>
@@ -199,11 +155,16 @@
       <button>Schedule</button>
     </form><p id="job-timezone"></p><ul class="rows" id="jobs"></ul><h3>Recent deliveries</h3><ul class="rows" id="job-events"></ul>
   </section>
-  <section class="panel" id="devices"><h2>Connected Devices</h2>
+  <section class="panel" hidden id="devices"><h2>Devices</h2>
+    <dl class="device-summary">
+      <div><dt>Laptop</dt><dd><output id="laptop-state">Checking connection…</output><output id="cpu-ram"></output><output id="model-state"></output></dd></div>
+      <div><dt>Mobile</dt><dd><output id="device-state">Checking devices…</output></dd></div>
+      <div><dt>Network</dt><dd><output id="network">Checking connection…</output></dd></div>
+    </dl>
     <div class="controls"><button id="invite" type="button" hidden>Create pairing code</button><output id="pair-code" role="status"></output></div>
     <ul class="rows" id="devices-list"></ul>
   </section>
-  <section class="panel" id="files"><h2>Files</h2>
+  <section class="panel" hidden id="files"><h2>Files</h2>
     <label>Upload knowledge (TXT, MD or PDF, up to 5 MB)<input id="document" class="upload" type="file" accept=".txt,.md,.pdf"></label>
     <div id="documents">No documents</div>
     <form id="projects-form"><label>Allowed project <select id="project" name="project" required></select></label>
@@ -212,39 +173,42 @@
       <button name="action" value="launch" data-risk>Request VS Code launch</button>
     </form><output id="file-list"></output>
   </section>
-  <section class="panel" id="email"><h2>Email</h2><p id="gmail-status">Checking Gmail…</p>
+  <section class="panel" hidden id="email"><h2>Email</h2><p id="gmail-status">Checking Gmail…</p>
     <div class="controls"><button id="gmail-connect" type="button" hidden>Connect Gmail</button><button id="gmail-disconnect" type="button" hidden>Disconnect Gmail</button></div>
     <ul class="rows" id="drafts"></ul>
   </section>
-  <section class="panel" id="messages"><h2>Messages</h2>
+  <section class="panel" hidden id="messages"><h2>Messages</h2>
     <p>Open a prepared message on this device for review and sending.</p>
     <form id="compose"><label>International number <input name="recipient" type="tel" placeholder="+91…" required></label>
       <textarea name="text" aria-label="Message" maxlength="1000" required></textarea>
-      <button name="app" value="sms">Open SMS composer</button><button name="app" value="whatsapp">Open WhatsApp composer</button>
+      <button id="copy-compose" type="button">Copy message</button><button name="app" value="sms">Open SMS composer</button><button name="app" value="whatsapp">Open WhatsApp composer</button>
     </form>
   </section>
-  <section class="panel" id="memory"><h2>Memory</h2>
+  <section class="panel" hidden id="memory"><h2>Memory</h2>
     <div id="memories">No memories yet</div>
     <form id="memory-search"><input name="q" aria-label="Search memory" placeholder="Search notes"><button>Search</button>
       <button id="memory-export" type="button">Export notes</button></form>
     <div class="controls" id="memory-categories"></div><ul class="rows" id="memory-list"></ul>
-    <button id="clear-history" type="button" hidden>Clear this conversation’s history</button>
   </section>
-  <section class="panel" id="activity"><h2>Activity History</h2><div class="rows" id="audit"></div></section>
-  <section class="panel" id="integrations"><h2>Integrations</h2><p>Ollama, whisper.cpp, and Piper run on the laptop. <a href="#email">Manage Gmail</a> or <a href="#messages">prepare a message</a>.</p></section>
-  <section class="panel" id="settings"><h2>Settings</h2><p id="session-description"></p><div class="controls">
-    <button id="refresh" type="button">Refresh information</button><button id="signout" type="button" hidden>Sign out</button>
-  </div></section>
-  <footer>Keep BALAJI on your private network.</footer>
-</main>
-<aside class="telemetry" aria-label="System status">
-  <div class="box"><h2>Laptop</h2><output id="laptop-state">Checking connection…</output><output id="cpu-ram"></output><output id="model-state"></output></div>
-  <div class="box"><h2>Devices</h2><output id="device-state">Checking devices…</output></div>
-  <div class="box"><h2>Current action</h2><output id="current-run">Idle</output><output id="pending-count"></output></div>
-  <div class="box"><h2>Upcoming reminder</h2><output id="next-job">No scheduled reminders</output></div>
-</aside>
+  <section class="panel" hidden id="activity"><h2>Activity</h2><ul class="rows" id="audit"></ul></section>
+  <section class="panel" hidden id="integrations"><h2>Integrations</h2><p>Ollama, whisper.cpp, and Piper run on the laptop. <a href="#email">Manage Gmail</a> or <a href="#messages">prepare a message</a>.</p></section>
+  <section class="panel" hidden id="settings"><h2>Settings</h2><p id="session-description"></p><div class="controls">
+    <button id="refresh" type="button">Refresh information</button><button id="notify" type="button" hidden>Enable reminder notifications</button><button id="signout" type="button" hidden>Sign out</button>
+    <button id="install" type="button" hidden>Install BALAJI</button>
+    </div>
+    <h3>Voice</h3>
+    <div class="controls" id="voice-settings">
+      <label><input id="auto-send" type="checkbox"> Hands-free conversation</label>
+      <label><input id="review-transcript" type="checkbox"> Review transcript before sending</label>
+      <button id="mute" type="button" aria-pressed="false">Mute</button>
+      <label for="volume">Volume <input id="volume" type="range" min="0" max="100" value="80"></label>
+      <button id="voice-mode" type="button" hidden>End voice session</button>
+    </div>
+  </section>
+    </div>
+  </dialog>
 </div>
-<div id="resources-toggle" hidden></div>
 <script src="/dashboard.js" defer></script>
 <script src="/control.js" defer></script>
-</body></html>
+</body>
+</html>

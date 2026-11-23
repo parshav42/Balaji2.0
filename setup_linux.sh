@@ -33,6 +33,13 @@ if command -v ollama >/dev/null; then
     printf 'Ollama model: %s unavailable or service offline\n' "$model"
   fi
 fi
+if command -v tailscale >/dev/null; then
+  if tailscale status --json | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin).get("BackendState") != "Running")' 2>/dev/null; then
+    printf 'Tailscale: connected to a tailnet\n'
+  else
+    printf 'Tailscale: sign in and check its service before configuring private access\n'
+  fi
+fi
 whisper_root="${BALAJI_WHISPER_ROOT:-$HOME/whisper.cpp}"
 whisper_bin="${BALAJI_WHISPER_BIN:-$whisper_root/build/bin/whisper-cli}"
 whisper_model="${BALAJI_WHISPER_MODEL:-$whisper_root/models/ggml-tiny.en.bin}"
@@ -41,6 +48,11 @@ voice_dir="${BALAJI_VOICE_DIR:-voices}"
 voice="${BALAJI_PIPER_VOICE:-en_US-lessac-medium}"
 if [[ -r "$voice_dir/$voice.onnx" && -r "$voice_dir/$voice.onnx.json" ]]; then printf 'Piper: model and config ready\n'; else printf 'Piper: missing voice files\n'; fi
 
+if [[ -x .venv/bin/python ]] && .venv/bin/python -c 'import importlib.util, sys; sys.exit(importlib.util.find_spec("piper") is None)'; then
+  printf 'Piper: Python package present\n'
+else
+  printf 'Piper: run setup to install the Python package\n'
+fi
 if [[ "$mode" == '--check' ]]; then exit 0; fi
 if [[ ! -d .venv ]]; then python3 -m venv .venv; fi
 .venv/bin/python -m pip install -r requirements-dev.txt -r requirements-voice.txt
@@ -56,5 +68,6 @@ if config.GMAIL_CLIENT_FILE:
     gmail.client_settings()
 PY
 .venv/bin/python -m pytest -q
+if command -v node >/dev/null; then node --test tests/test_composers.cjs; fi
 .venv/bin/python -m balaji.maintenance --migrate
 if [[ "$mode" == '--start' ]]; then exec ./run_linux.sh; fi

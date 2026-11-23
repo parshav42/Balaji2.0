@@ -77,6 +77,7 @@ def history(session: str, limit: int = 16) -> list[dict]:
 def clear_history(session: str) -> None:
     with connection() as db:
         db.execute("DELETE FROM messages WHERE session_id=?", (session,))
+        db.execute("UPDATE runs SET result=NULL WHERE session_id=?", (session,))
 
 
 def memory_enabled(db: sqlite3.Connection, category: str) -> bool:
@@ -151,10 +152,12 @@ def all_chunks() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def create_approval(token: str, session: str, name: str, args: dict) -> None:
+def create_approval(token: str, session: str, name: str, args: dict, run_id: str | None = None) -> None:
     with connection() as db:
         db.execute("INSERT INTO approvals(id,session_id,tool_name,arguments,created_at) VALUES(?,?,?,?,?)",
                    (token, session, name, json.dumps(args), now()))
+        if run_id:
+            db.execute("INSERT INTO run_approvals VALUES(?,?)", (token, run_id))
 
 
 def pending_approvals(session: str | None) -> list[dict]:
@@ -164,9 +167,16 @@ def pending_approvals(session: str | None) -> list[dict]:
     return [dict(r) | {"arguments": json.loads(r["arguments"])} for r in rows]
 
 
+def approval_status(token: str) -> dict | None:
+    with connection() as db:
+        row = db.execute("SELECT id,status,result FROM approvals WHERE id=?", (token,)).fetchone()
+    return dict(row) if row else None
+
+
 def claim_approval(token: str) -> dict | None:
     """Claim an approval exactly once; do not hold a lock while executing tools."""
     with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT * FROM approvals WHERE id=?", (token,)).fetchone()
         if row is None:
             return None
@@ -189,6 +199,7 @@ def finish_approval(token: str, status: str, result: str) -> None:
 
 def reject_approval(token: str) -> dict | None:
     with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT * FROM approvals WHERE id=?", (token,)).fetchone()
         if row is None:
             return None

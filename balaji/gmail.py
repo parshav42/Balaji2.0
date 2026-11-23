@@ -171,9 +171,14 @@ def make_draft(message_id: str, body: str) -> str:
     original_id = fields.get("message-id", "")
     if not re.fullmatch(r"<[^<>\s]{1,240}>", original_id):
         raise ValueError("The original email lacks a valid Message-ID for a threaded reply.")
+    values = (read_tokens()["account"], address, subject, body.strip(), row["threadId"], original_id)
     with closing(storage.connection()) as db, db:
-        draft = db.execute("INSERT INTO mail_drafts(account,recipient,subject,body,thread_id,message_id) VALUES(?,?,?,?,?,?)",
-                           (read_tokens()["account"], address, subject, body.strip(), row["threadId"], original_id)).lastrowid
+        db.execute("BEGIN IMMEDIATE")
+        existing = db.execute("SELECT id FROM mail_drafts WHERE account=? AND recipient=? AND subject=? AND body=? "
+                              "AND thread_id=? AND message_id=? AND status='draft'", values).fetchone()
+        draft = existing["id"] if existing else db.execute(
+            "INSERT INTO mail_drafts(account,recipient,subject,body,thread_id,message_id) VALUES(?,?,?,?,?,?)", values
+        ).lastrowid
     return f"Saved unsent reply draft #{draft} to {address} about {subject}. Request approval through send_gmail_draft."
 
 
@@ -197,6 +202,7 @@ def send_draft(draft_id: int) -> str:
             raise ValueError("This draft has already been processed. Check Gmail Sent before any manual retry.")
     try:
         email = EmailMessage()
+        email["From"] = data["account"]
         email["To"] = data["recipient"]
         email["Subject"] = data["subject"]
         email["In-Reply-To"] = data["message_id"]

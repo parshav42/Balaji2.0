@@ -1,8 +1,10 @@
-# BALAJI — Local AI Personal Assistant (Linux v1.0)
+# BALAJI 2.0 · Private Personal Assistant
 
 A **free, local-first, portfolio-ready AI agent**. Ollama powers reasoning and tool calling, FastAPI provides a local browser dashboard, SQLite stores conversations/memories/tasks, and optional whisper.cpp + Piper provide **offline voice conversations**. No paid LLM API is needed.
 
-> **Scope:** BALAJI v1.0 is a complete *local personal-assistant MVP*, not a complete Iron-Man/Jarvis operating-system controller. It does not have wake-word detection, unrestricted desktop control, browser automation, email access or cloud synchronization. Microphone and speaker capabilities require local setup.
+BALAJI 2.0 adds a private phone-accessible PWA, paired browsers, real laptop actions, Gmail drafts and approved sending, persistent automations, and agent activity history.
+
+**New setup**: run `./setup_linux.sh --check`, then `./setup_linux.sh` and `./run_linux.sh`. Follow the [deployment guide](docs/deployment.md) to pair a phone through Tailscale Serve, configure project folders, or connect Gmail. Local chat and voice are available at **http://127.0.0.1:8000**.
 
 ## Included
 
@@ -47,7 +49,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export BALAJI_MODEL=qwen3:1.7b
-uvicorn server:app --host 127.0.0.1 --port 8000
+uvicorn server:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log --timeout-graceful-shutdown 8
 ```
 
 Open **http://127.0.0.1:8000**. The dashboard will show chat, notes, tasks and uploaded documents. API schema is at **http://127.0.0.1:8000/docs**.
@@ -62,7 +64,7 @@ python balaji.py
 
 Examples: “What's the time?”, “Remember I want to practise Python”, “Create a task to revise LangGraph”, “What tasks are pending?”, “Search my knowledge documents for SQLite.”
 
-If BALAJI asks for approval, inspect the operation and choose **Approve** or **Reject**. An approved action is performed once and its result appears in the dashboard. This version does not automatically resume a multi-step agent plan after browser approval; issue a follow-up prompt to continue if necessary.
+If BALAJI asks for approval, inspect the operation and choose **Approve** or **Reject**. An approved action is performed once and its result appears in the dashboard. Approving resumes the waiting action and records its outcome. Give a follow-up to continue with additional steps.
 
 ## 4. Add local documents (RAG)
 
@@ -193,7 +195,7 @@ BALAJI_Complete_Linux_v1/
 
 ## 8. Security and limitations
 
-- **Run only on localhost** (`127.0.0.1`). The REST API **does not implement login/authentication**. Public hosting requires authentication, HTTPS, CSRF protection, and per-user authorization.
+- Bind FastAPI to loopback. Set `BALAJI_REMOTE_HOST` only for your private Tailscale Serve hostname. Remote mode enables browser authentication on the laptop and phone. Approved devices belong to one owner and share that owner’s workspace.
 - Ollama is restricted to local HTTP addresses by default; no paid API token is needed.
 - `.sqlite3` may contain personal data and is gitignored. **Do not upload the database, secrets or private documents to public GitHub.**
 - The model may misinterpret requests or make mistakes. The allowlist intentionally does not permit shell execution or arbitrary file manipulation.

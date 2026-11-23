@@ -56,6 +56,16 @@ def next_slot(job, now: int) -> int | None:
     return int(candidate.timestamp())
 
 
+def deliver(db, job, scheduled_at: int, now: int) -> None:
+    message = job["name"]
+    if job["kind"] == "task_summary":
+        completed = db.execute("SELECT COUNT(*) FROM tasks WHERE completed=1").fetchone()[0]
+        active = db.execute("SELECT COUNT(*) FROM tasks WHERE completed=0").fetchone()[0]
+        message = f"{message}: {completed} completed tasks, {active} open tasks."
+    db.execute("INSERT OR IGNORE INTO job_events(job_id,scheduled_at,ran_at,outcome,message) VALUES(?,?,?,'delivered',?)",
+               (job["id"], scheduled_at, now, message))
+
+
 def tick(now: int | None = None) -> None:
     now = int(time.time()) if now is None else now
     with closing(storage.connection()) as db, db:
@@ -63,13 +73,7 @@ def tick(now: int | None = None) -> None:
         jobs = db.execute("SELECT * FROM jobs WHERE state='active' AND next_run<=? ORDER BY next_run LIMIT 30",
                           (now,)).fetchall()
         for job in jobs:
-            message = job["name"]
-            if job["kind"] == "task_summary":
-                completed = db.execute("SELECT COUNT(*) FROM tasks WHERE completed=1").fetchone()[0]
-                active = db.execute("SELECT COUNT(*) FROM tasks WHERE completed=0").fetchone()[0]
-                message = f"{message}: {completed} completed tasks, {active} open tasks."
-            db.execute("INSERT INTO job_events(job_id,scheduled_at,ran_at,outcome,message) VALUES(?,?,?,'delivered',?)",
-                       (job["id"], job["next_run"], now, message))
+            deliver(db, job, job["next_run"], now)
             next_run = next_slot(job, now)
             db.execute("UPDATE jobs SET state=?,next_run=?,last_run=? WHERE id=?",
                        ("active" if next_run else "completed", next_run or job["next_run"], now, job["id"]))
@@ -126,11 +130,11 @@ def manage(job_id: int, body: JobAction):
             raise HTTPException(404, "Unknown automation.")
         if row["state"] not in {"active", "paused"}:
             raise HTTPException(409, "This automation already ended.")
-        status = {"pause": "paused", "resume": "active", "cancel": "cancelled", "run": "active"}[action]
-        due = int(time.time()) if action == "run" else row["next_run"]
         if action == "run":
-            last = db.execute("SELECT MAX(scheduled_at) FROM job_events WHERE job_id=?", (job_id,)).fetchone()[0]
-            if last is not None and due <= last:
-                due = last + 1
-        db.execute("UPDATE jobs SET state=?,next_run=? WHERE id=?", (status, due, job_id))
+            now = int(time.time())
+            deliver(db, row, now, now)
+            db.execute("UPDATE jobs SET last_run=? WHERE id=?", (now, job_id))
+            return {"state": row["state"]}
+        status = {"pause": "paused", "resume": "active", "cancel": "cancelled"}[action]
+        db.execute("UPDATE jobs SET state=? WHERE id=?", (status, job_id))
     return {"state": status}

@@ -147,8 +147,7 @@ def request_action(name: str, body: ActionRequest, request: Request):
             raise HTTPException(409, "This dashboard action is already recorded.")
         return existing
     token = uuid4().hex
-    storage.create_approval(token, body.session_id, name, body.arguments)
-    activity.link_approval(run, token)
+    storage.create_approval(token, body.session_id, name, body.arguments, run)
     pending = {"id": token, "tool_name": name, "arguments": body.arguments}
     if preview:
         pending["preview"] = preview

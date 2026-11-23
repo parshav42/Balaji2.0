@@ -21,6 +21,7 @@ REMOTE_SESSION_SECONDS = 7 * 86400
 CODE_SECONDS = 600
 rate_lock = Lock()
 rate_windows: dict[str, deque[float]] = {}
+TOOL_PERMISSIONS = frozenset({"personal", "desktop", "files", "automation", "gmail"})
 
 
 def digest(value: str) -> str:
@@ -68,10 +69,25 @@ def read_session(token: str | None, *, seen: bool = True) -> dict | None:
         return dict(row)
 
 
+def allows_tool(actor: str, permission: str) -> bool:
+    if permission not in TOOL_PERMISSIONS:
+        return False
+    if actor == "local":
+        return True
+    with closing(storage.connection()) as db:
+        return db.execute("SELECT 1 FROM devices WHERE id=? AND status='approved' AND expires_at>?",
+                          (actor, time.time())).fetchone() is not None
+
+
 def public_device(row: dict) -> dict:
     return {**row, "online": row["status"] != "revoked" and row["expires_at"] > time.time()
             and time.time() - row["last_seen"] < 35,
-            "capabilities": ["chat", "voice", "tasks", "approvals"] if row["status"] == "approved" else []}
+            "capabilities": ["chat", "voice", "approvals", *sorted(TOOL_PERMISSIONS)] if row["status"] == "approved" else []}
+
+
+def audit_device(db, actor: str, action: str, result: str) -> None:
+    db.execute("INSERT INTO run_events(actor,action,status,created_at) VALUES(?,?,?,?)",
+               (actor, action, result, int(time.time())))
 
 
 def approved(request: Request) -> dict:
@@ -123,6 +139,7 @@ def enroll(body: Enrollment, request: Request, response: Response):
         db.execute("INSERT INTO devices VALUES(?,?,?,?,?,?,?,?)",
                    (device_id, body.name.strip() or "Browser", body.platform.strip(), role,
                     status, digest(token), now + duration, now))
+        audit_device(db, device_id, "device_enrolled", status)
     response.set_cookie(COOKIE, token, max_age=duration, httponly=True,
                         secure=request.state.remote, samesite="lax", path="/")
     return {"status": status}
@@ -145,16 +162,17 @@ def devices(request: Request):
 
 @router.post("/devices/{device_id}")
 def decide(device_id: str, body: Decision, request: Request):
-    owner(request)
+    actor = owner(request)
     with closing(storage.connection()) as db, db:
         if body.allow:
             changed = db.execute("UPDATE devices SET status='approved' WHERE id=? AND role='device' "
                                  "AND status='pending' AND expires_at>?", (device_id, time.time()))
         else:
-            changed = db.execute("UPDATE devices SET status='revoked' WHERE id=? AND role='device' "
-                                 "AND status!='revoked'", (device_id,))
+            changed = db.execute("UPDATE devices SET status='revoked' WHERE id=? AND id!=? "
+                                 "AND status!='revoked'", (device_id, actor["id"]))
         if not changed.rowcount:
             raise HTTPException(404, "No matching eligible device.")
+        audit_device(db, actor["id"], "device_approval" if body.allow else "device_revocation", "succeeded")
     return {"status": "approved" if body.allow else "revoked"}
 
 

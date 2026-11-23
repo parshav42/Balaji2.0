@@ -5,6 +5,7 @@ import asyncio
 import re
 from urllib import request as http
 import json
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
 from anyio import CancelScope, to_thread
@@ -42,6 +43,13 @@ PUBLIC_ACCESS = {"/api/access", "/api/access/enroll", "/api/access/logout"}
 
 @app.middleware("http")
 async def access_boundary(request: Request, call_next):
+    peer = request.client.host if request.client else ""
+    try:
+        loopback = ip_address(peer).is_loopback
+    except ValueError:
+        loopback = peer == "testclient"
+    if not loopback:
+        return JSONResponse({"detail": "Use the local server or private loopback reverse proxy."}, status_code=403)
     try:
         target = urlsplit("//" + request.headers.get("host", ""))
         host = target.hostname
@@ -66,6 +74,13 @@ async def access_boundary(request: Request, call_next):
     if remote and path in {"/docs", "/redoc", "/docs/oauth2-redirect", "/openapi.json", "/health"}:
         return JSONResponse({"detail": "Not found"}, status_code=404)
     if path.startswith("/api/"):
+        maximum = {"/api/documents/upload": config.MAX_FILE_BYTES + 16384,
+                   "/api/voice/transcribe": 8 * 1024 * 1024 + 16384}.get(path, 96 * 1024)
+        if request.method in {"POST", "PUT", "PATCH"}:
+            length = request.headers.get("content-length")
+            if ((length is not None and (len(length) > 10 or not length.isascii() or not length.isdecimal() or int(length) > maximum))
+                    or (length is None and "transfer-encoding" in request.headers and path != "/api/voice/transcribe")):
+                return JSONResponse({"detail": "This request body exceeds the supported limit."}, status_code=413)
         if config.REMOTE_HOST:
             request.state.actor = await run_in_threadpool(access.read_session, request.cookies.get(access.COOKIE))
         else:
@@ -75,14 +90,21 @@ async def access_boundary(request: Request, call_next):
             return JSONResponse({"detail": "Too many pairing attempts. Try again in a minute."}, status_code=429)
         if path not in PUBLIC_ACCESS and (not actor or actor["status"] != "approved"):
             return JSONResponse({"detail": "This device is not approved."}, status_code=401)
-        if actor and request.method == "POST" and not access.rate_allowed(actor["id"], 90):
-            return JSONResponse({"detail": "Request limit reached. Try again in a minute."}, status_code=429)
+        if actor:
+            category, limit = ("live", 12) if path == "/api/live" else (
+                ("read", 240) if request.method in {"GET", "HEAD"} else ("write", 90)
+            )
+            if not access.rate_allowed(f"{category}:{actor['id']}", limit):
+                return JSONResponse({"detail": "Request limit reached. Try again in a minute."}, status_code=429)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                                                   "img-src 'self' data:; media-src 'self' blob:; worker-src 'self'; "
-                                                   "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+    if path not in {"/docs", "/redoc", "/docs/oauth2-redirect"}:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; media-src 'self' blob:; worker-src 'self'; "
+            "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        )
     if path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response
@@ -176,14 +198,23 @@ def chat_stream(inp: ChatIn, request: Request = None):
     return ChatStreamResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.get("/api/tools")
+def tool_registry():
+    visible = tools.visible_schemas()
+    return [{"name": spec.schema["function"]["name"], "description": spec.schema["function"]["description"],
+             "input_schema": spec.schema["function"]["parameters"], "permission": spec.permission,
+             "risk": spec.risk, "timeout_seconds": spec.timeout, "requires_approval": name in tools.MUTATING}
+            for name, spec in tools.REGISTRY.items() if spec.schema in visible]
+
+
 @app.get("/api/activity")
 def get_activity():
     return activity.snapshot()
 
 
 def live_snapshot() -> dict:
-    config.validate_ollama_url()
     try:
+        config.validate_ollama_url()
         with http.urlopen(config.OLLAMA_URL + "/api/tags", timeout=1.5) as response:
             ollama = config.MODEL in {m["name"] for m in json.loads(response.read(512 * 1024)).get("models", [])}
     except (ValueError, KeyError, OSError):
@@ -243,6 +274,16 @@ def add_approval_previews(result):
             item["preview"] = preview
     return result
 
+@app.get("/api/approvals/status/{token}")
+def approval_status(token: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise HTTPException(404, "Approval request not found")
+    outcome = storage.approval_status(token)
+    if not outcome:
+        raise HTTPException(404, "Approval request not found")
+    return outcome
+
+
 @app.post("/api/approvals/{token}")
 def approve(token: str, body: ApprovalIn, request: Request):
     result = agent.decide_approval(token, body.approved, access.approved(request)["id"])
@@ -266,7 +307,7 @@ async def upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-WEB_ASSETS = {"control.js": "text/javascript", "manifest.webmanifest": "application/manifest+json",
+WEB_ASSETS = {"assistant.css": "text/css", "control.js": "text/javascript", "manifest.webmanifest": "application/manifest+json",
               "sw.js": "text/javascript", "icon-192.png": "image/png", "icon-512.png": "image/png"}
 
 
@@ -275,5 +316,3 @@ def frontend_asset(file_name: str):
     if file_name not in WEB_ASSETS:
         raise HTTPException(404, "Not found")
     return FileResponse(WEB_ROOT / file_name, media_type=WEB_ASSETS[file_name])
-
-
