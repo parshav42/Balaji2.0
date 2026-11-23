@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
-  <meta name="theme-color" content="#070D1A">
+  <meta name="theme-color" content="#f5fbff">
   <title>BALAJI · Personal Assistant</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
@@ -49,10 +49,10 @@
           <svg class="core-art" viewBox="0 0 240 240">
             <defs>
               <radialGradient id="core-fill" cx="48%" cy="45%" r="55%">
-                <stop stop-color="#173a56"/><stop offset=".7" stop-color="#102742"/><stop offset="1" stop-color="#091627"/>
+                <stop stop-color="#e8faff"/><stop offset=".7" stop-color="#c5edfa"/><stop offset="1" stop-color="#a9ddf2"/>
               </radialGradient>
               <linearGradient id="core-edge" x2="100%" y2="100%">
-                <stop stop-color="#aff2ff"/><stop offset=".48" stop-color="#285575"/><stop offset="1" stop-color="#77dedb"/>
+                <stop stop-color="#42c8ee"/><stop offset=".48" stop-color="#1685c3"/><stop offset="1" stop-color="#77dedb"/>
               </linearGradient>
             </defs>
             <circle cx="120" cy="120" r="109" class="orbit-guide"/>
@@ -78,6 +78,14 @@
         <div class="state" role="status">
           <span id="status"><span class="state-dot" aria-hidden="true"></span><span id="orb-state">Idle</span></span>
           <span id="voice-detail" hidden></span>
+        </div>
+        <div class="suggestions">
+          <p>Not sure where to start? Try one of these</p>
+          <div class="suggestion-list">
+            <button type="button" data-prompt="Help me plan my day.">Plan my day</button>
+            <button type="button" data-prompt="Explain a topic to me in simple terms.">Explain something</button>
+            <button type="button" data-prompt="Help me brainstorm some creative ideas.">Brainstorm ideas</button>
+          </div>
         </div>
         <time id="timer" hidden>0:00</time>
       </div>

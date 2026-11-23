@@ -3,6 +3,12 @@ const prompt = el('prompt');
 const speaker = el('speaker');
 const transcriptView = el('chat');
 const core = document.querySelector('.core');
+document.querySelectorAll('[data-prompt]').forEach(button => {
+  button.addEventListener('click', () => {
+    prompt.value = button.dataset.prompt;
+    prompt.focus();
+  });
+});
 const MAX_RECORD_MS = 59_000; // Leave room for MediaRecorder's final audio frame.
 const END_OF_TURN_MS = 1_100;
 const MIN_VOICE_MS = 90;
