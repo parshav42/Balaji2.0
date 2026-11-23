@@ -86,7 +86,7 @@ async def run_scheduler() -> None:
 
 def snapshot() -> dict:
     with closing(storage.connection()) as db:
-        return {"jobs": [dict(row) for row in db.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 100")],
+        return {"timezone": config.TIMEZONE, "jobs": [dict(row) for row in db.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 100")],
                 "events": [dict(row) for row in db.execute("SELECT * FROM job_events ORDER BY id DESC LIMIT 30")]}
 
 

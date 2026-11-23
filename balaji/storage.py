@@ -154,9 +154,10 @@ def create_approval(token: str, session: str, name: str, args: dict) -> None:
                    (token, session, name, json.dumps(args), now()))
 
 
-def pending_approvals(session: str) -> list[dict]:
+def pending_approvals(session: str | None) -> list[dict]:
     with connection() as db:
-        rows = db.execute("SELECT * FROM approvals WHERE session_id=? AND status='pending' ORDER BY created_at", (session,)).fetchall()
+        rows = db.execute("SELECT * FROM approvals WHERE (? IS NULL OR session_id=?) AND status='pending' "
+                          "ORDER BY created_at LIMIT 100", (session, session)).fetchall()
     return [dict(r) | {"arguments": json.loads(r["arguments"])} for r in rows]
 
 

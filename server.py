@@ -221,11 +221,19 @@ def history(session_id: str):
         raise HTTPException(status_code=400, detail="Invalid session")
     return storage.history(session_id, 100)
 
+@app.get("/api/approvals")
+def all_pending_approvals():
+    return add_approval_previews(storage.pending_approvals(None))
+
+
 @app.get("/api/approvals/{session_id}")
 def approvals(session_id: str):
     if len(session_id) > 64 or not all(c.isalnum() or c in "_-" for c in session_id):
         raise HTTPException(status_code=400, detail="Invalid session")
-    result = storage.pending_approvals(session_id)
+    return add_approval_previews(storage.pending_approvals(session_id))
+
+
+def add_approval_previews(result):
     for item in result:
         try:
             preview = tools.approval_preview(item["tool_name"], item["arguments"])
