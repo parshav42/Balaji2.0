@@ -11,9 +11,10 @@ A **free, local-first, portfolio-ready AI agent**. Ollama powers reasoning and t
 - **Explicit approval:** changes to tasks and memory require terminal confirmation or browser Approve/Reject.
 - **Persistence:** SQLite messages (per chat), tasks, notes, approvals, document chunks.
 - **Local documents:** upload text/Markdown/PDF, chunk + retrieve, provide source markers. Keyword search works with zero embedding models; optional Ollama embeddings add semantic search.
-- **Web UI:** modern single-page dashboard via FastAPI, task/memory lists, document upload, approval controls.
-- **Linux voice:** microphone -> ffmpeg -> whisper.cpp -> Ollama -> Piper -> speakers, all offline after setup; requires keyboard approvals.
-- **Tests/CI:** mocked LLM tests; no live model, paid API or hardware needed to run automated tests.
+- **Web dashboard:** streams Ollama replies as they arrive. Includes conversation history, task and memory lists, document upload, and approval controls.
+- **Browser voice:** push-to-talk with a recording timer and level meter, transcript preview, optional auto-send, and Piper playback of completed replies. The dashboard includes Stop, Mute, and volume controls.
+- **Linux terminal voice:** ALSA or PulseAudio recording feeds the same local Whisper and Piper installations. Terminal and browser each use the agent’s existing approval flow.
+- **Tests/CI:** mocked LLM and speech models. Automated tests run without model downloads or audio hardware.
 
 ## 1. Hardware / model check
 
@@ -51,6 +52,8 @@ uvicorn server:app --host 127.0.0.1 --port 8000
 
 Open **http://127.0.0.1:8000**. The dashboard will show chat, notes, tasks and uploaded documents. API schema is at **http://127.0.0.1:8000/docs**.
 
+You can also launch with `./run_linux.sh`. For browser voice, install the speech dependencies and models below in the same environment used by the web server.
+
 To run the same agent in terminal mode:
 
 ```bash
@@ -78,6 +81,8 @@ Existing keyword-only documents are not automatically re-embedded. Model answers
 ## 5. Offline voice on Linux
 
 ### Linux audio prerequisites
+
+Install FFmpeg for browser and terminal voice. Install `git`, `cmake` and `build-essential` to build whisper.cpp. The browser uses its configured microphone and speakers. The `alsa-utils` package and the commands below are for terminal audio diagnostics.
 
 ```bash
 sudo apt install -y git cmake build-essential ffmpeg alsa-utils
@@ -122,9 +127,26 @@ python voice.py --listen-only --seconds 5
 python voice.py --seconds 5
 ```
 
-You can override voice paths with `BALAJI_WHISPER_ROOT`, `BALAJI_WHISPER_BIN`, `BALAJI_WHISPER_MODEL`, `BALAJI_VOICE_DIR`, `BALAJI_PIPER_VOICE`, `BALAJI_AUDIO_BACKEND` (`alsa` or `pulse`). `python voice.py --help` displays options.
+| Setting | Default |
+|---|---|
+| `BALAJI_WHISPER_ROOT` | `~/whisper.cpp` |
+| `BALAJI_WHISPER_BIN` | `$BALAJI_WHISPER_ROOT/build/bin/whisper-cli` |
+| `BALAJI_WHISPER_MODEL` | `$BALAJI_WHISPER_ROOT/models/ggml-tiny.en.bin` |
+| `BALAJI_VOICE_DIR` | `voices/` inside the project |
+| `BALAJI_PIPER_VOICE` | `en_US-lessac-medium`, with matching `.onnx` and `.onnx.json` files in the voice directory |
+| `BALAJI_AUDIO_BACKEND` | `alsa`. Set `pulse` for terminal recording through PipeWire/PulseAudio. |
 
-**Voice mode is push-to-talk:** press Enter and speak for a short fixed time. The microphone is not always recording. Actions changing local tasks or memories still require keyboard approval.
+Export overrides in the shell that starts BALAJI. For terminal voice, run `python voice.py` and press Enter to record for a fixed duration. Use `python voice.py --help` for options.
+
+### Use Voice Mode in the browser
+
+1. Open **http://127.0.0.1:8000**, turn **Voice Mode** on, and click the microphone beside the message field.
+2. Select **Allow** when the browser prompts for microphone access. If permission is already blocked, open the site controls next to the address bar, allow **Microphone**, and reload.
+3. Say “Balaji, explain AI agents” and click **Stop recording**. After Whisper finishes, the transcript appears in the dashboard. Turn **Auto-send** off to edit the transcript before pressing **Send**.
+4. Read the streamed reply as it arrives. Piper reads up to 750 characters of the completed answer. If the browser blocks autoplay, select **Play reply**.
+5. Use **Stop generation** to interrupt the stream, or **Stop playback** to stop the audio. Adjust **Volume** or select **Mute**. Voice Mode starts off on each page load, and recording starts only when you click the microphone.
+
+Requests to change tasks or memories still require clicking **Approve** or **Reject**. Approval details are displayed in the dashboard. The voice endpoints are `POST /api/voice/transcribe` (multipart `file`, WebM/Ogg/MP4/WAV, up to 8 MiB and 60 seconds) and `POST /api/voice/speak` (JSON `{"text":"Hello"}`, up to 750 characters, WAV response).
 
 ## 6. Tests
 
@@ -134,7 +156,15 @@ python -m pytest -q
 python -m compileall -q balaji server.py balaji.py voice.py
 ```
 
-The test suite mocks Ollama and does not validate actual microphone, speakers, model tool-calling quality or PDF extraction across every kind of file. Complete a real hardware smoke test before claiming a deployed voice demo.
+The test suite mocks Ollama, Whisper and Piper. Use the following checklist for physical devices, browser permissions and the installed model’s behavior.
+
+### Manual browser checklist
+
+- [ ] With Voice Mode off, send a typed message and verify that tokens arrive incrementally and the reply is silent.
+- [ ] Enable Voice Mode and allow the microphone. Verify **Listening**, the timer, and the level meter. Stop recording and check **Transcribing**, the transcript, streamed text, and audio playback.
+- [ ] Disable Auto-send and edit the transcript before submitting. Try Stop during generation, Stop during speech, Mute, and volume adjustment. Verify **Play reply** works if autoplay is blocked.
+- [ ] Speak a task or memory request. Verify the data changes only after explicit approval. Reload to verify conversation history and pending approvals are still available.
+- [ ] Try microphone denial, an empty recording, and a mobile-sized viewport. Confirm the dashboard shows a clear error, recovers, and keeps the tasks, memories, and documents accessible.
 
 ## 7. Project layout
 
@@ -146,8 +176,9 @@ BALAJI_Complete_Linux_v1/
 │   ├── config.py           # environment options
 │   ├── storage.py          # SQLite persistence
 │   ├── tools.py            # strict Python tool allowlist
+│   ├── voice_api.py        # local speech endpoints and upload validation
 │   └── rag.py              # ingestion + retrieval
-├── web/index.html          # local chat dashboard
+├── web/                    # local chat dashboard and browser voice controls
 ├── server.py               # FastAPI and API endpoints
 ├── balaji.py               # terminal mode
 ├── voice.py                # offline push-to-talk
@@ -162,7 +193,7 @@ BALAJI_Complete_Linux_v1/
 
 ## 8. Security and limitations
 
-- **Run only on localhost** (`127.0.0.1`). The REST API **does not implement login/authentication**. Never bind it to `0.0.0.0`, expose it to the internet, or port-forward it without implementing authentication, CSRF protection and per-user authorization.
+- **Run only on localhost** (`127.0.0.1`). The REST API **does not implement login/authentication**. Public hosting requires authentication, HTTPS, CSRF protection, and per-user authorization.
 - Ollama is restricted to local HTTP addresses by default; no paid API token is needed.
 - `.sqlite3` may contain personal data and is gitignored. **Do not upload the database, secrets or private documents to public GitHub.**
 - The model may misinterpret requests or make mistakes. The allowlist intentionally does not permit shell execution or arbitrary file manipulation.
@@ -178,9 +209,10 @@ BALAJI_Complete_Linux_v1/
 | `Cannot reach local Ollama` | Check `ollama list`, `ollama serve` / systemd service and port 11434. |
 | Model not found | Run `ollama pull qwen3:1.7b` and set `BALAJI_MODEL` to an installed name. |
 | Slow or frozen machine | Try `qwen3:0.6b`, close browser tabs, and disable optional embeddings. |
-| Empty audio or missing microphone | Verify `arecord` outside Python; try `BALAJI_AUDIO_BACKEND=pulse`. |
+| Browser microphone denied or unavailable | Open `http://127.0.0.1:8000`, allow the microphone in the site settings, and check the selected Linux input device. A current Chromium or Firefox browser can help if recording format support fails. |
+| Empty audio | Check that the browser’s level meter moves when you speak. For terminal recording, verify `arecord` or try `BALAJI_AUDIO_BACKEND=pulse`. |
 | Whisper executable/model missing | Build whisper.cpp, download the model, and set paths. |
-| Piper not speaking | Check your `voices/` files and run `python voice.py --say "test"`. |
+| Browser stays silent | Select **Play reply** if shown. Check Mute, Volume, site sound settings, and the Linux output device. If synthesis fails, check the Piper model files and install `requirements-voice.txt` in the server’s virtual environment. |
 | PDF shows no chunks | Use a digital-text PDF or convert scanned pages to searchable text. |
 
 Official project docs: [Ollama](https://docs.ollama.com/), [whisper.cpp](https://github.com/ggml-org/whisper.cpp), [Piper](https://github.com/OHF-Voice/piper1-gpl).
