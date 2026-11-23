@@ -49,10 +49,10 @@ def ensure_executable(name: str) -> None:
         raise VoiceSetupError(f"'{name}' is missing from PATH. Check the Linux setup instructions.")
 
 
-def execute(args: list[str], *, label: str, timeout: int = 120) -> None:
+def execute(args: list[str], *, label: str, timeout: int = 120, input_text: str | None = None) -> None:
     try:
         subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                       text=True, errors="replace", timeout=timeout)
+                       encoding="utf-8", errors="replace", timeout=timeout, input=input_text)
     except subprocess.CalledProcessError as e:
         message = (e.stderr or "").strip()[-1600:]
         raise VoiceProcessError(f"{label} failed (exit code {e.returncode}). {message}") from e
@@ -83,15 +83,21 @@ def convert_audio(source: Path, destination: Path, *, input_format: str | None =
     cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror", "-y"]
     if input_format:
         cmd += ["-protocol_whitelist", "file", "-f", input_format]
+    if input_format == "mov":
+        cmd += ["-enable_drefs", "0"]
     cmd += ["-i", str(source), "-map", "0:a:0", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"]
     if max_seconds is not None:
         cmd += ["-t", str(max_seconds + 1)]
     execute([*cmd, str(destination)], label="WAV conversion", timeout=30)
-    with wave.open(str(destination), "rb") as wav:
-        if wav.getnframes() <= 0 or wav.getframerate() != 16000 or wav.getnchannels() != 1 or wav.getsampwidth() != 2:
-            raise ValueError("The recording contains no usable audio.")
-        if max_seconds is not None and wav.getnframes() > 16000 * max_seconds:
-            raise ValueError(f"Recordings must be {max_seconds} seconds or shorter.")
+    try:
+        with wave.open(str(destination), "rb") as wav:
+            if (wav.getnframes() <= 0 or wav.getframerate() != 16000
+                    or wav.getnchannels() != 1 or wav.getsampwidth() != 2):
+                raise ValueError("The recording contains no usable audio.")
+            if max_seconds is not None and wav.getnframes() > 16000 * max_seconds:
+                raise ValueError(f"Recordings must be {max_seconds} seconds or shorter.")
+    except (EOFError, wave.Error) as exc:
+        raise ValueError("The recording contains no usable audio.") from exc
 
 
 def transcribe(wav_path: Path, output_stem: Path) -> str:
@@ -127,7 +133,7 @@ def synthesize(message: str, destination: Path) -> None:
     if not voice_model.is_file() or not voice_config.is_file():
         raise VoiceSetupError(f"Piper voice files missing in {VOICE_DIR}. Download {PIPER_VOICE}.")
     execute([sys.executable, "-m", "piper", "-m", str(voice_model), "--config", str(voice_config),
-             "-f", str(destination), "--", message], label="Piper synthesis")
+             "-f", str(destination)], label="Piper synthesis", input_text=message + "\n")
     try:
         with wave.open(str(destination), "rb") as wav:
             if wav.getnframes() > 0:
