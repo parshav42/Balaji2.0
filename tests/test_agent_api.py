@@ -1,6 +1,7 @@
 import json
 from contextlib import nullcontext
 
+import anyio
 from fastapi.testclient import TestClient
 import pytest
 import server
@@ -115,6 +116,40 @@ def test_truncated_stream_reports_error_without_saving_partial_reply(monkeypatch
     events = [json.loads(line[6:]) for line in response.text.splitlines() if line]
     assert [event['type'] for event in events] == ['token', 'error']
     assert storage.history('stream') == []
+
+
+def test_disconnected_chat_closes_ollama_stream(monkeypatch):
+    closed = []
+
+    def stream(messages, tools):
+        try:
+            yield {'content': 'Partial answer'}
+            pytest.fail('A disconnected client must not advance the reply')
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(ollama_client, 'chat_stream', stream)
+
+    async def disconnect():
+        first_token = anyio.Event()
+        response = server.chat_stream(server.ChatIn(message='Hi', session_id='stopped'))
+
+        async def send(message):
+            if message['type'] == 'http.response.body':
+                assert b'Partial answer' in message['body']
+                first_token.set()
+                await anyio.sleep_forever()
+
+        async def receive():
+            await first_token.wait()
+            return {'type': 'http.disconnect'}
+
+        with anyio.fail_after(2):
+            await response({'type': 'http', 'asgi': {'spec_version': '2.3'}}, receive, send)
+
+    anyio.run(disconnect)
+    assert closed == [True]
+    assert storage.history('stopped') == []
 
 
 def test_api_approval(monkeypatch):
