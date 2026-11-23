@@ -27,111 +27,106 @@
     .upload{width:100%;font-size:12px;display:block;margin-top:9px}#documents,#tasks,#memories{font-size:13px;color:#b3c4d9;line-height:1.6;max-height:185px;overflow:auto;white-space:pre-wrap;word-break:break-word}
     #status{font-size:12px;color:#8cb4ad;min-height:18px}.action{display:flex;gap:9px;margin-top:8px;flex-wrap:wrap}.danger{border-color:#b06b6b;color:#ffbbbb}
     footer{color:#69829d;font-size:11px;text-align:center}.mobilehead{display:none}
-    @media(max-width:760px){.app{display:block}aside{padding:12px;gap:10px}.brand{font-size:19px}.sidecards{display:none}main{height:calc(100dvh - 112px);padding:13px}.heading h1{font-size:20px}.heading p{display:none}.msg{max-width:95%}.mobilehead{display:block}}
+    [hidden]{display:none!important}
+    button:focus-visible,input:focus-visible{outline:2px solid #72dfff;outline-offset:2px}
+    #resources{display:grid;gap:12px}
+    #resources-toggle{display:none}
+    main{min-width:0}
+    #chat{min-height:120px}
+    .console{background:linear-gradient(145deg,#122135,#101824);border:1px solid #294563;border-radius:16px;padding:12px;display:grid;gap:9px}
+    .voice-toolbar,.voice-settings,.state-row,.state-display{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+    .voice-toolbar,.state-row{justify-content:space-between}
+    .voice-toolbar button,.state-row button{min-height:38px;padding:6px 10px;font-size:13px}
+    .voice-toolbar button[aria-pressed="true"]{border-color:#53c7f9;background:#173f5a;color:#d6f5ff}
+    .autosend,.volume{display:flex;align-items:center;gap:6px;font-size:13px;color:#bed1e8;white-space:nowrap}
+    .volume input{width:82px}
+    .console input{accent-color:#60ccff}
+    #notice,#voice-detail,#transcript{font-size:13px;color:#bed1e8;overflow-wrap:anywhere}
+    #notice:empty{display:none}
+    #transcript{padding:7px 9px;border-left:2px solid #54bbec;max-height:4.8rem;overflow:auto}
+    #status,#timer{color:#c4eafc;font-size:13px}
+    #timer{font-variant-numeric:tabular-nums}
+    .state-dot{width:8px;height:8px;border-radius:50%;background:#62d7e7;box-shadow:0 0 10px #53cfff80}
+    [data-state="listening"] .state-dot,[data-state="listening"] #mic,[data-state="speaking"] .state-dot{animation:pulse 1s ease-in-out infinite alternate}
+    [data-state="listening"] .state-dot{background:#ff8da2}
+    [data-state="error"] .state-dot{background:#ff8da2;box-shadow:none}
+    [data-state="error"] #voice-detail{color:#ffc7d1}
+    .meter{width:38px;height:22px;display:flex;align-items:center;gap:3px}
+    .meter i{height:85%;width:4px;background:#64d6ff;border-radius:3px;transform:scaleY(var(--level,.18));transition:transform .08s}
+    .meter i:nth-child(even){height:64%}
+    [data-state="speaking"] .meter i{animation:speaking .45s ease-in-out infinite alternate}
+    [data-state="speaking"] .meter i:nth-child(even){animation-delay:.22s}
+    .chat-form input{padding:12px}
+    #mic{display:grid;place-items:center;min-width:46px}
+    .mic-icon{width:16px;height:14px;border:2px solid currentColor;border-top:0;border-radius:0 0 10px 10px;position:relative;margin-top:4px}
+    .mic-icon::before,.mic-icon::after{content:"";position:absolute;left:50%;transform:translateX(-50%);background:currentColor}
+    .mic-icon::before{width:7px;height:14px;border-radius:6px;bottom:2px}
+    .mic-icon::after{width:2px;height:5px;top:12px}
+    @keyframes pulse{to{box-shadow:0 0 15px #62d7e7ab}}
+    @keyframes speaking{to{transform:scaleY(1)}}
+    @media(prefers-reduced-motion:reduce){.console *, .console *::before{animation:none!important;transition:none!important}}
+    @media(max-width:760px){
+      .app{display:flex;flex-direction:column;min-height:100dvh}
+      aside{padding:12px;gap:8px}
+      .brand{font-size:19px}
+      .sidebar-note{display:none}
+      #resources-toggle{display:block;align-self:flex-start;padding:6px 10px;font-size:13px}
+      #resources-toggle[aria-expanded="false"] + #resources{display:none}
+      main{height:auto;flex:1;margin:0 auto;padding:12px;gap:9px}
+      .heading h1{font-size:20px}
+      .heading p{display:none}
+      #chat{flex:1 0 28dvh;padding:12px;max-height:55dvh}
+      .msg{max-width:95%}
+      .console{padding:9px}
+    }
   </style>
 </head>
 <body>
 <div class="app"><aside>
   <div><div class="brand"><div class="orb"></div>BALAJI</div><div class="sub" style="margin-top:11px">Local AI Personal Assistant</div></div>
   <div><span class="pill">● Local · Private by default</span></div>
-  <div class="sidecards box"><h3>Upload knowledge</h3><div class="sub">Text / Markdown / PDF · Max 5MB</div><input id="document" class="upload" type="file" accept=".txt,.md,.pdf"><div id="documents" style="margin-top:10px">No documents</div></div>
-  <div class="sidecards box"><h3>Tasks</h3><div id="tasks">No tasks yet</div></div>
-  <div class="sidecards box"><h3>Memories</h3><div id="memories">No memories yet</div></div>
+  <button id="resources-toggle" type="button" aria-expanded="false" aria-controls="resources">Tasks, memories &amp; documents</button>
+  <div id="resources">
+  <div class="box"><h3>Upload knowledge</h3><div class="sub">Text / Markdown / PDF · Max 5MB</div><input id="document" class="upload" type="file" accept=".txt,.md,.pdf"><div id="documents" style="margin-top:10px">No documents</div></div>
+  <div class="box"><h3>Tasks</h3><div id="tasks">No tasks yet</div></div>
+  <div class="box"><h3>Memories</h3><div id="memories">No memories yet</div></div>
   <button id="refresh">Refresh information</button>
-  <div style="margin-top:auto" class="sub">No cloud LLM bill · Keep API private</div>
+  </div>
+  <div class="sidebar-note" style="margin-top:auto" class="sub">No cloud LLM bill · Keep API private</div>
 </aside>
 <main>
   <div class="heading"><div><h1>Talk to BALAJI</h1><p>Ask questions · Use tools · Retrieve your documents · Approve actions</p></div><button id="newchat">New conversation</button></div>
   <section id="chat" aria-live="polite"><div class="msg assistant">Hello! I'm BALAJI. Ask me something, upload documents, or tell me to manage tasks. I'll request approval before saving or modifying data.</div></section>
-  <div id="status" role="status"></div>
-  <form class="chat-form" id="form"><input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Ask BALAJI anything..." aria-label="Message"><button id="send" type="submit">Send</button></form>
+  <output id="notice" role="status"></output>
+  <section class="console" aria-label="Chat controls" data-state="ready">
+    <div class="voice-toolbar">
+      <button id="voice-mode" type="button" aria-pressed="false">Voice Mode: Off</button>
+      <div id="voice-settings" class="voice-settings" hidden>
+        <label class="autosend"><input id="auto-send" type="checkbox" checked> Auto-send</label>
+        <button id="mute" type="button" aria-pressed="false">Mute</button>
+        <label class="volume" for="volume">Volume <input id="volume" type="range" min="0" max="100" value="80"></label>
+      </div>
+    </div>
+    <div class="state-row">
+      <div class="state-display">
+        <span class="state-dot" aria-hidden="true"></span>
+        <span id="status" role="status">Ready</span>
+        <div id="meter" class="meter" aria-hidden="true" hidden><i></i><i></i><i></i><i></i><i></i></div>
+        <time id="timer" hidden>0:00</time>
+      </div>
+      <button id="play" type="button" hidden>Play reply</button>
+      <button id="stop" class="danger" type="button" hidden>Stop</button>
+    </div>
+    <p id="voice-detail" role="status" hidden></p>
+    <p id="transcript" role="status" hidden></p>
+    <form class="chat-form" id="form">
+      <input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Ask BALAJI anything..." aria-label="Message">
+      <button id="mic" type="button" aria-label="Start microphone recording" title="Start microphone recording" hidden><span class="mic-icon" aria-hidden="true"></span></button>
+      <button id="send" type="submit">Send</button>
+    </form>
+    <audio id="speaker" preload="none" hidden></audio>
+  </section>
   <footer>Localhost-only demo · Ollama runs on your machine · Never store passwords or sensitive secrets in memory</footer>
 </main></div>
-<script>
-  const el=id=>document.getElementById(id);
-  let session=sessionStorage.getItem('balaji_session')||'web';let busy=false;
-  async function request(path,opts={}){const r=await fetch(path,opts);let d;try{d=await r.json()}catch{d={detail:'Invalid server response'}}if(!r.ok)throw Error(d.detail||'Request failed');return d}
-  function msg(who,text){const div=document.createElement('div');div.className='msg '+who;div.textContent=text;el('chat').append(div);el('chat').scrollTop=el('chat').scrollHeight;return div}
-  function setStatus(t){el('status').textContent=t}
-  async function refresh(){try{const [tasks,notes,docs]=await Promise.all([request('/api/tasks'),request('/api/memories'),request('/api/documents')]);el('tasks').textContent=tasks.map(t=>`${t.completed?'✓':'□'} ${t.description}`).join('\n')||'No tasks yet';el('memories').textContent=notes.map(x=>`• ${x.fact}`).join('\n')||'No memories yet';el('documents').textContent=docs.map(d=>`${d.name} (${d.chunks} chunks)`).join('\n')||'No documents';}catch(e){setStatus(e.message)}}
-  function approval(p){const container=msg('assistant',`Permission required: ${p.tool_name}\n${JSON.stringify(p.arguments)}`);const controls=document.createElement('div');controls.className='action';for(const [label,allow] of [['Approve',true],['Reject',false]]){const b=document.createElement('button');b.textContent=label;if(!allow)b.className='danger';b.onclick=async()=>{for(const child of controls.children)child.disabled=true;try{const r=await request('/api/approvals/'+p.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved:allow})});msg('assistant',r.result||r.status);await refresh()}catch(e){msg('assistant','Approval error: '+e.message)}};controls.append(b)}container.append(controls)}
-  el('form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const text = el('prompt').value.trim();
-    if (busy || !text) return;
-    busy = true;
-    el('send').disabled = true;
-    el('newchat').disabled = true;
-    el('prompt').value = '';
-    msg('user', text);
-    const answer = msg('assistant waiting', 'BALAJI is thinking…');
-    setStatus('');
-    let reply = '';
-    let result;
-    let reader;
-    try {
-      const response = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Accept': 'text/event-stream'},
-        body: JSON.stringify({message: text, session_id: session})
-      });
-      if (!response.ok || !response.body) throw Error('Could not start the reply');
-      reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (!result) {
-        const {done, value} = await reader.read();
-        if (done) throw Error('The reply ended before it was complete');
-        buffer += decoder.decode(value, {stream: true});
-        const blocks = buffer.split('\n\n');
-        buffer = blocks.pop();
-        for (const block of blocks) {
-          const line = block.split('\n').find(line => line.startsWith('data: '));
-          if (!line) continue;
-          const update = JSON.parse(line.slice(6));
-          if (update.type === 'token') {
-            if (!reply) setStatus('BALAJI is replying…');
-            reply += update.text;
-            answer.classList.remove('waiting');
-            answer.textContent = reply;
-            el('chat').scrollTop = el('chat').scrollHeight;
-          } else if (update.type === 'tool') {
-            reply = '';
-            answer.classList.add('waiting');
-            answer.textContent = 'BALAJI is handling a tool request…';
-            setStatus('');
-          } else if (update.type === 'done') {
-            result = update;
-          } else if (update.type === 'error') {
-            throw Error(update.detail);
-          }
-        }
-      }
-      if (result.pending_approval) {
-        answer.remove();
-        approval(result.pending_approval);
-      } else {
-        answer.classList.remove('waiting');
-        answer.textContent = result.answer;
-        el('chat').scrollTop = el('chat').scrollHeight;
-      }
-      setStatus('Ready');
-      await refresh();
-    } catch (error) {
-      answer.classList.remove('waiting');
-      if (!reply) answer.textContent = 'Could not complete the reply.';
-      setStatus(error.message);
-    } finally {
-      if (reader) reader.cancel().catch(() => {});
-      busy = false;
-      el('send').disabled = false;
-      el('newchat').disabled = false;
-      el('prompt').focus();
-    }
-  });
-  el('document').addEventListener('change',async()=>{const file=el('document').files[0];if(!file)return;const fd=new FormData();fd.append('file',file);setStatus('Indexing '+file.name+'…');try{const result=await request('/api/documents/upload',{method:'POST',body:fd});setStatus(`Indexed ${result.chunks} passages from ${result.name}`);refresh()}catch(e){setStatus(e.message)}el('document').value=''});
-  el('refresh').addEventListener('click',refresh);
-  el('newchat').addEventListener('click',()=>{session='chat-'+crypto.randomUUID().replaceAll('-','').slice(0,20);sessionStorage.setItem('balaji_session',session);el('chat').replaceChildren();msg('assistant','New conversation started. Your old chats remain saved locally.');setStatus('Conversation switched')});
-  refresh();
-</script>
+<script src="/dashboard.js" defer></script>
 </body></html>
