@@ -493,6 +493,8 @@ el('clear-history').addEventListener('click', handle(async () => {
   endVoiceSession();
   try {
     await request('/api/history/' + session, {method: 'DELETE'});
+    saveConversationName('');
+    renderConversations();
     updateChat(() => transcriptView.replaceChildren(...approvalCards.values()));
     showTranscript();
     announceReply('');

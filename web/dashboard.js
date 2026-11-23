@@ -19,10 +19,10 @@ let session = sessionStorage.getItem('balaji_session') || 'web';
 let loadingConversation = false;
 let conversationNames = {};
 try {
-  conversationNames = Object.fromEntries(Object.entries(JSON.parse(sessionStorage.getItem('balaji_conversations') || '{}'))
+  conversationNames = Object.fromEntries(Object.entries(JSON.parse(localStorage.getItem('balaji_conversations') || '{}'))
     .filter(([id, name]) => /^chat-[a-z0-9]+$/.test(id) && typeof name === 'string'));
 } catch {
-  // Older tabs may have stored only the active session.
+  // The current conversation still works when browser storage is unavailable.
 }
 let voiceMode = false;
 let voiceApproval = null;
@@ -46,6 +46,7 @@ async function request(path, options) {
 
 function syncConversation() {
   const hasMessages = Boolean(transcriptView.childElementCount);
+  if (transcriptView.hidden === !hasMessages) return;
   transcriptView.hidden = !hasMessages;
   el('dashboard').classList.toggle('in-conversation', hasMessages);
 }
@@ -106,11 +107,15 @@ function setStatus(state, detail = '') {
   if (state === 'Ready' && approvalCards.size) state = 'Approval needed';
   if (state === 'Ready' && el('connection').dataset.network === 'offline') state = 'Offline';
   const label = state === 'Ready' ? 'Idle' : state;
-  el('voice').dataset.state = state.toLowerCase().replaceAll(' ', '-');
+  const value = state.toLowerCase().replaceAll(' ', '-');
+  if (el('voice').dataset.state === value && el('voice-detail').textContent === detail) return;
+  const follow = nearChatEnd();
+  el('voice').dataset.state = value;
   if (el('orb-state').textContent !== label) el('orb-state').textContent = label;
   if (el('voice-detail').textContent !== detail) el('voice-detail').textContent = detail;
   el('voice-detail').hidden = !detail;
   el('timer').hidden = state !== 'Listening';
+  if (follow) transcriptView.scrollTop = transcriptView.scrollHeight;
 }
 
 function showTranscript(text = '') {
@@ -119,6 +124,7 @@ function showTranscript(text = '') {
 }
 
 function updateControls() {
+  const focused = document.activeElement;
   const blocked = Boolean(chat || capture || voiceApproval || loadingConversation);
   el('voice-mode').hidden = !voiceMode;
   el('mic').hidden = Boolean(capture);
@@ -137,6 +143,10 @@ function updateControls() {
   stop.title = label;
   el('play').hidden = !speech?.needsGesture;
   el('retry-fresh').hidden = el('retry').hidden = !retryRequest || blocked;
+  if ([el('mic'), el('send'), stop, el('play')].includes(focused) && (focused.hidden || focused.disabled)) {
+    const next = [stop, el('play'), el('mic'), el('send')].find(button => !button.hidden && !button.disabled);
+    next?.focus({preventScroll: true});
+  }
 }
 
 function endVoiceSession(state = 'Ready', detail = '') {
@@ -283,9 +293,14 @@ async function loadConversation() {
 }
 
 function saveConversationName(text) {
-  if (session === 'web' || conversationNames[session]) return;
-  conversationNames[session] = text.slice(0, 66);
-  sessionStorage.setItem('balaji_conversations', JSON.stringify(conversationNames));
+  if (session === 'web') return;
+  if (text) conversationNames[session] = text.slice(0, 66);
+  else delete conversationNames[session];
+  try {
+    localStorage.setItem('balaji_conversations', JSON.stringify(conversationNames));
+  } catch {
+    // Keep navigation available for this page even when persistence is blocked.
+  }
 }
 
 function switchConversation(id) {
@@ -643,7 +658,7 @@ async function runChat(text, key) {
   retryRequest = null;
   el('notice').textContent = '';
   announceReply('');
-  saveConversationName(text);
+  if (!conversationNames[session]) saveConversationName(text);
   const job = {controller: new AbortController(), allowSpeech: voiceMode};
   chat = job;
   updateControls();
@@ -681,7 +696,7 @@ async function runChat(text, key) {
           updateChat(() => { answer.textContent = reply; });
         } else if (update.type === 'tool') {
           reply = '';
-          const detail = update.tool_name ? actionName(update.tool_name) : 'Running a tool for your request';
+          const detail = 'Running a tool for your request';
           answer.classList.add('waiting');
           updateChat(() => { answer.textContent = detail + '…'; });
           setStatus('Executing', detail);
