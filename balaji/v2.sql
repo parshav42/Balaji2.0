@@ -46,4 +46,5 @@ CREATE TABLE IF NOT EXISTS memory_categories (
     note_id INTEGER PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE, category TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS memory_settings (category TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
+PRAGMA user_version = 2;
 COMMIT;

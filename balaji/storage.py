@@ -19,7 +19,9 @@ def connection() -> sqlite3.Connection:
     return conn
 
 
-def init_db() -> None:
+def init_db() -> Path | None:
+    from .maintenance import backup_before_upgrade
+    backup = backup_before_upgrade()
     with connection() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS notes (
@@ -47,6 +49,7 @@ def init_db() -> None:
           result TEXT, created_at TEXT NOT NULL);
         """)
         db.executescript(Path(__file__).with_name("v2.sql").read_text(encoding="utf-8"))
+    return backup
 
 
 def add_message(session: str, role: str, content: str) -> None:

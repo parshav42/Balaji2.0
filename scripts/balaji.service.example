@@ -1,0 +1,16 @@
+[Unit]
+Description=BALAJI private personal assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Downloads/BALAJI_Complete_Linux_v1
+EnvironmentFile=-%h/.config/balaji/environment
+ExecStart=%h/Downloads/BALAJI_Complete_Linux_v1/.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
