@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BALAJI · Local Agent</title>
+  <style>
+    :root{font-family:system-ui,Inter,Segoe UI,Arial,sans-serif;color:#e8eef6;background:#0b101a;color-scheme:dark}
+    *{box-sizing:border-box}body{margin:0}.app{display:grid;grid-template-columns:270px 1fr;min-height:100vh}
+    aside{background:#111a29;border-right:1px solid #223246;padding:28px 18px;display:flex;flex-direction:column;gap:19px}
+    .brand{display:flex;align-items:center;gap:10px;font-size:25px;font-weight:800;letter-spacing:1px}
+    .orb{height:34px;width:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c6faff,#18c9bc 45%,#0c345b 73%);box-shadow:0 0 26px #20d4c0aa}
+    .sub{color:#8c9bb0;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+    .box{background:#141f30;border:1px solid #253952;border-radius:15px;padding:15px;min-width:0}
+    .pill{font-size:12px;border-radius:999px;background:#06443d;color:#a0ffdb;padding:5px 10px;display:inline-block}
+    button,input{font:inherit}button{background:#142d3a;color:#c9f6ec;border:1px solid #2a736f;border-radius:9px;padding:10px 13px;cursor:pointer}button:hover{background:#214854}
+    main{max-width:1150px;width:100%;margin:auto;padding:22px 30px;height:100vh;display:flex;flex-direction:column;gap:14px}
+    h1,h2,h3,p{margin:0}h1{font-size:25px}h3{font-size:14px;margin-bottom:12px}h2{font-size:16px}
+    .heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
+    .heading p{font-size:13px;color:#92a7c1;margin-top:7px}
+    #chat{flex:1;overflow:auto;border:1px solid #223346;border-radius:18px;background:linear-gradient(150deg,#101927,#0d1621);padding:25px;display:flex;flex-direction:column;gap:17px;min-height:250px}
+    .msg{max-width:85%;padding:13px 16px;border-radius:15px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;font-size:14px}
+    .user{align-self:flex-end;background:#146259;color:#f3fffc;border-bottom-right-radius:3px}
+    .assistant{align-self:flex-start;background:#1b2b40;color:#ebf3ff;border-bottom-left-radius:3px}
+    .assistant.waiting{color:#b3c4d9}
+    button:disabled{opacity:.6;cursor:default}
+    .chat-form{display:flex;gap:9px}.chat-form input{background:#121e2c;border:1px solid #2b4359;border-radius:12px;padding:16px;color:#f3fbff;flex:1;min-width:0}
+    .upload{width:100%;font-size:12px;display:block;margin-top:9px}#documents,#tasks,#memories{font-size:13px;color:#b3c4d9;line-height:1.6;max-height:185px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+    #status{font-size:12px;color:#8cb4ad;min-height:18px}.action{display:flex;gap:9px;margin-top:8px;flex-wrap:wrap}.danger{border-color:#b06b6b;color:#ffbbbb}
+    footer{color:#69829d;font-size:11px;text-align:center}.mobilehead{display:none}
+    @media(max-width:760px){.app{display:block}aside{padding:12px;gap:10px}.brand{font-size:19px}.sidecards{display:none}main{height:calc(100dvh - 112px);padding:13px}.heading h1{font-size:20px}.heading p{display:none}.msg{max-width:95%}.mobilehead{display:block}}
+  </style>
+</head>
+<body>
+<div class="app"><aside>
+  <div><div class="brand"><div class="orb"></div>BALAJI</div><div class="sub" style="margin-top:11px">Local AI Personal Assistant</div></div>
+  <div><span class="pill">● Local · Private by default</span></div>
+  <div class="sidecards box"><h3>Upload knowledge</h3><div class="sub">Text / Markdown / PDF · Max 5MB</div><input id="document" class="upload" type="file" accept=".txt,.md,.pdf"><div id="documents" style="margin-top:10px">No documents</div></div>
+  <div class="sidecards box"><h3>Tasks</h3><div id="tasks">No tasks yet</div></div>
+  <div class="sidecards box"><h3>Memories</h3><div id="memories">No memories yet</div></div>
+  <button id="refresh">Refresh information</button>
+  <div style="margin-top:auto" class="sub">No cloud LLM bill · Keep API private</div>
+</aside>
+<main>
+  <div class="heading"><div><h1>Talk to BALAJI</h1><p>Ask questions · Use tools · Retrieve your documents · Approve actions</p></div><button id="newchat">New conversation</button></div>
+  <section id="chat" aria-live="polite"><div class="msg assistant">Hello! I'm BALAJI. Ask me something, upload documents, or tell me to manage tasks. I'll request approval before saving or modifying data.</div></section>
+  <div id="status" role="status"></div>
+  <form class="chat-form" id="form"><input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Ask BALAJI anything..." aria-label="Message"><button id="send" type="submit">Send</button></form>
+  <footer>Localhost-only demo · Ollama runs on your machine · Never store passwords or sensitive secrets in memory</footer>
+</main></div>
+<script>
+  const el=id=>document.getElementById(id);
+  let session=sessionStorage.getItem('balaji_session')||'web';let busy=false;
+  async function request(path,opts={}){const r=await fetch(path,opts);let d;try{d=await r.json()}catch{d={detail:'Invalid server response'}}if(!r.ok)throw Error(d.detail||'Request failed');return d}
+  function msg(who,text){const div=document.createElement('div');div.className='msg '+who;div.textContent=text;el('chat').append(div);el('chat').scrollTop=el('chat').scrollHeight;return div}
+  function setStatus(t){el('status').textContent=t}
+  async function refresh(){try{const [tasks,notes,docs]=await Promise.all([request('/api/tasks'),request('/api/memories'),request('/api/documents')]);el('tasks').textContent=tasks.map(t=>`${t.completed?'✓':'□'} ${t.description}`).join('\n')||'No tasks yet';el('memories').textContent=notes.map(x=>`• ${x.fact}`).join('\n')||'No memories yet';el('documents').textContent=docs.map(d=>`${d.name} (${d.chunks} chunks)`).join('\n')||'No documents';}catch(e){setStatus(e.message)}}
+  function approval(p){const container=msg('assistant',`Permission required: ${p.tool_name}\n${JSON.stringify(p.arguments)}`);const controls=document.createElement('div');controls.className='action';for(const [label,allow] of [['Approve',true],['Reject',false]]){const b=document.createElement('button');b.textContent=label;if(!allow)b.className='danger';b.onclick=async()=>{for(const child of controls.children)child.disabled=true;try{const r=await request('/api/approvals/'+p.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved:allow})});msg('assistant',r.result||r.status);await refresh()}catch(e){msg('assistant','Approval error: '+e.message)}};controls.append(b)}container.append(controls)}
+  el('form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const text = el('prompt').value.trim();
+    if (busy || !text) return;
+    busy = true;
+    el('send').disabled = true;
+    el('newchat').disabled = true;
+    el('prompt').value = '';
+    msg('user', text);
+    const answer = msg('assistant waiting', 'BALAJI is thinking…');
+    setStatus('');
+    let reply = '';
+    let result;
+    let reader;
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Accept': 'text/event-stream'},
+        body: JSON.stringify({message: text, session_id: session})
+      });
+      if (!response.ok || !response.body) throw Error('Could not start the reply');
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!result) {
+        const {done, value} = await reader.read();
+        if (done) throw Error('The reply ended before it was complete');
+        buffer += decoder.decode(value, {stream: true});
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop();
+        for (const block of blocks) {
+          const line = block.split('\n').find(line => line.startsWith('data: '));
+          if (!line) continue;
+          const update = JSON.parse(line.slice(6));
+          if (update.type === 'token') {
+            if (!reply) setStatus('BALAJI is replying…');
+            reply += update.text;
+            answer.classList.remove('waiting');
+            answer.textContent = reply;
+            el('chat').scrollTop = el('chat').scrollHeight;
+          } else if (update.type === 'tool') {
+            reply = '';
+            answer.classList.add('waiting');
+            answer.textContent = 'BALAJI is handling a tool request…';
+            setStatus('');
+          } else if (update.type === 'done') {
+            result = update;
+          } else if (update.type === 'error') {
+            throw Error(update.detail);
+          }
+        }
+      }
+      if (result.pending_approval) {
+        answer.remove();
+        approval(result.pending_approval);
+      } else {
+        answer.classList.remove('waiting');
+        answer.textContent = result.answer;
+        el('chat').scrollTop = el('chat').scrollHeight;
+      }
+      setStatus('Ready');
+      await refresh();
+    } catch (error) {
+      answer.classList.remove('waiting');
+      if (!reply) answer.textContent = 'Could not complete the reply.';
+      setStatus(error.message);
+    } finally {
+      if (reader) reader.cancel().catch(() => {});
+      busy = false;
+      el('send').disabled = false;
+      el('newchat').disabled = false;
+      el('prompt').focus();
+    }
+  });
+  el('document').addEventListener('change',async()=>{const file=el('document').files[0];if(!file)return;const fd=new FormData();fd.append('file',file);setStatus('Indexing '+file.name+'…');try{const result=await request('/api/documents/upload',{method:'POST',body:fd});setStatus(`Indexed ${result.chunks} passages from ${result.name}`);refresh()}catch(e){setStatus(e.message)}el('document').value=''});
+  el('refresh').addEventListener('click',refresh);
+  el('newchat').addEventListener('click',()=>{session='chat-'+crypto.randomUUID().replaceAll('-','').slice(0,20);sessionStorage.setItem('balaji_session',session);el('chat').replaceChildren();msg('assistant','New conversation started. Your old chats remain saved locally.');setStatus('Conversation switched')});
+  refresh();
+</script>
+</body></html>
