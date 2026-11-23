@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from balaji import access, activity, agent, automation, desktop, gmail, storage, config, rag, tools
+from balaji import access, activity, agent, automation, desktop, gmail, storage, config, rag, tools, workspace_api
 from balaji.ollama_client import OllamaError
 from balaji.voice_api import router as voice_router
 
@@ -35,6 +35,7 @@ app.include_router(voice_router)
 app.include_router(access.router)
 app.include_router(automation.router)
 app.include_router(gmail.router)
+app.include_router(workspace_api.router)
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "testserver"}
 PUBLIC_ACCESS = {"/api/access", "/api/access/enroll", "/api/access/logout"}
 
@@ -255,3 +256,16 @@ async def upload(file: UploadFile = File(...)):
         return await run_in_threadpool(rag.ingest_bytes, name, contents)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+WEB_ASSETS = {"control.js": "text/javascript", "manifest.webmanifest": "application/manifest+json",
+              "sw.js": "text/javascript", "icon-192.png": "image/png", "icon-512.png": "image/png"}
+
+
+@app.get("/{file_name}", include_in_schema=False)
+def frontend_asset(file_name: str):
+    if file_name not in WEB_ASSETS:
+        raise HTTPException(404, "Not found")
+    return FileResponse(WEB_ROOT / file_name, media_type=WEB_ASSETS[file_name])
+
+
