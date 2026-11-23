@@ -21,6 +21,7 @@ let micPermissionPending = false;
 let capture = null;
 let chat = null;
 let speech = null;
+let retryRequest = null;
 
 async function responseError(response) {
   const body = await response.json().catch(() => ({}));
@@ -52,6 +53,8 @@ function notice(text) {
 
 function setStatus(state, detail = '') {
   document.querySelector('.console').dataset.state = state.toLowerCase();
+  el('voice').dataset.state = state.toLowerCase();
+  el('orb-state').textContent = state === 'Ready' ? 'Idle' : state;
   el('status').textContent = state;
   el('voice-detail').textContent = detail;
   el('voice-detail').hidden = !detail;
@@ -78,6 +81,7 @@ function updateControls() {
   el('stop').textContent = capture?.phase === 'recording' ? (capture.automatic ? 'Send now' : 'Stop recording')
     : chat ? 'Stop generation' : speech ? 'Stop playback' : 'Cancel';
   el('play').hidden = !speech?.needsGesture;
+  el('retry').hidden = !retryRequest || Boolean(chat || capture || voiceApproval);
 }
 
 function endVoiceSession(state = 'Ready', detail = '') {
@@ -120,7 +124,7 @@ function approval(p) {
   if (approvalIds.has(p.id)) return;
   approvalIds.add(p.id);
   const originSession = session;
-  const container = msg('assistant', `Permission required: ${p.tool_name}\n${JSON.stringify(p.arguments)}`);
+  const container = msg('assistant', `Permission required: ${p.tool_name}\n${JSON.stringify(p.preview || p.arguments, null, 2)}`);
   const controls = document.createElement('div');
   controls.className = 'action';
   for (const [label, allow] of [['Approve', true], ['Reject', false]]) {
@@ -142,6 +146,7 @@ function approval(p) {
           }
         }
         void refresh();
+        document.dispatchEvent(new Event('balaji:refresh'));
       } catch (error) {
         for (const child of controls.children) child.disabled = false;
         if (session === originSession) notice('Approval error: ' + error.message);
@@ -498,11 +503,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && voiceMode) endVoiceSession('Ready', 'Voice session ended when you left this tab.');
 });
 
-el('form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const text = prompt.value.trim();
+async function runChat(text, key) {
   if (chat || capture || voiceApproval || !text) return;
   stopSpeech();
+  retryRequest = null;
   const job = {controller: new AbortController(), allowSpeech: voiceMode};
   chat = job;
   updateControls();
@@ -515,7 +519,7 @@ el('form').addEventListener('submit', async event => {
   let reader;
   try {
     const response = await fetch('/api/chat/stream', {
-      method: 'POST', headers: {...jsonHeaders, Accept: 'text/event-stream'},
+      method: 'POST', headers: {...jsonHeaders, Accept: 'text/event-stream', 'Idempotency-Key': key},
       body: JSON.stringify({message: text, session_id: session}), signal: job.controller.signal
     });
     if (!response.ok) throw await responseError(response);
@@ -542,6 +546,7 @@ el('form').addEventListener('submit', async event => {
           reply = '';
           answer.classList.add('waiting');
           answer.textContent = 'BALAJI is handling a tool request…';
+          setStatus('Executing');
         } else if (update.type === 'done') {
           result = update;
           break;
@@ -569,6 +574,7 @@ el('form').addEventListener('submit', async event => {
       setStatus('Ready', 'Generation stopped.');
     } else {
       if (!reply) answer.textContent = 'Could not complete the reply.';
+      retryRequest = {text, key};
       endVoiceSession('Error', error.message);
     }
   } finally {
@@ -585,6 +591,16 @@ el('form').addEventListener('submit', async event => {
   } else if (voiceMode) {
     continueConversation(job.controller.signal.aborted ? 'Generation stopped.' : '');
   }
+  document.dispatchEvent(new Event('balaji:refresh'));
+}
+
+el('form').addEventListener('submit', event => {
+  event.preventDefault();
+  void runChat(prompt.value.trim(), crypto.randomUUID());
+});
+el('retry').addEventListener('click', () => {
+  const pending = retryRequest;
+  if (pending) void runChat(pending.text, pending.key);
 });
 
 el('document').addEventListener('change', async () => {
@@ -604,21 +620,17 @@ el('document').addEventListener('change', async () => {
   }
 });
 el('refresh').addEventListener('click', () => void refresh());
-el('resources-toggle').addEventListener('click', event => {
-  const button = event.currentTarget;
-  button.setAttribute('aria-expanded', button.getAttribute('aria-expanded') !== 'true');
-});
 el('newchat').addEventListener('click', () => {
   stopSpeech();
   showTranscript();
   session = 'chat-' + crypto.randomUUID().replaceAll('-', '').slice(0, 20);
   sessionStorage.setItem('balaji_session', session);
   approvalIds.clear();
+  retryRequest = null;
+  updateControls();
   el('chat').replaceChildren();
   msg('assistant', 'New conversation started.');
   setStatus('Ready');
 });
 
 updateControls();
-void loadConversation();
-void refresh();
