@@ -4,9 +4,8 @@ const speaker = el('speaker');
 const transcriptView = el('chat');
 const core = document.querySelector('.core');
 const MAX_RECORD_MS = 59_000; // Leave room for MediaRecorder's final audio frame.
-const IDLE_LISTEN_MS = 45_000;
 const END_OF_TURN_MS = 1_100;
-const MIN_VOICE_MS = 150;
+const MIN_VOICE_MS = 90;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_SPEECH_CHARS = 750;
 const recordTypes = new Map([
@@ -25,6 +24,7 @@ try {
   // The current conversation still works when browser storage is unavailable.
 }
 let voiceMode = false;
+let autoListen = true;
 let voiceApproval = null;
 let audioContext = null;
 let micPermissionPending = false;
@@ -62,10 +62,11 @@ function updateChat(change) {
   if (follow) transcriptView.scrollTop = transcriptView.scrollHeight;
 }
 
-function msg(role, text) {
+function msg(role, text, hidden = false) {
   const message = document.createElement('div');
   message.className = 'msg ' + role;
   message.textContent = text;
+  message.hidden = hidden;
   message.setAttribute('role', 'group');
   message.setAttribute('aria-label', role === 'user' ? 'You' : 'BALAJI');
   updateChat(() => transcriptView.append(message));
@@ -114,7 +115,7 @@ function setStatus(state, detail = '') {
   if (el('orb-state').textContent !== label) el('orb-state').textContent = label;
   if (el('voice-detail').textContent !== detail) el('voice-detail').textContent = detail;
   el('voice-detail').hidden = !detail;
-  el('timer').hidden = state !== 'Listening';
+  el('timer').hidden = state !== 'Listening' || capture?.automatic !== false;
   if (follow) transcriptView.scrollTop = transcriptView.scrollHeight;
 }
 
@@ -123,22 +124,30 @@ function showTranscript(text = '') {
   el('transcript').hidden = !text;
 }
 
+function captureBlocksText() {
+  return Boolean(capture && capture.phase !== 'listening');
+}
+
 function updateControls() {
   const focused = document.activeElement;
-  const blocked = Boolean(chat || capture || voiceApproval || loadingConversation);
+  const blocked = Boolean(chat || captureBlocksText() || voiceApproval || loadingConversation);
   el('voice-mode').hidden = !voiceMode;
-  el('mic').hidden = Boolean(capture);
-  el('mic').disabled = micPermissionPending || blocked;
-  el('send').hidden = Boolean(chat || capture || speech);
+  const mic = el('mic');
+  const micLabel = el('auto-send').checked ? 'Start hands-free voice' : 'Start recording';
+  mic.setAttribute('aria-label', micLabel);
+  mic.title = micLabel;
+  mic.hidden = Boolean(capture);
+  mic.disabled = micPermissionPending || blocked;
+  el('send').hidden = Boolean(chat || captureBlocksText() || speech);
   el('send').disabled = blocked;
-  el('newchat').disabled = Boolean(chat || capture || loadingConversation);
+  el('newchat').disabled = Boolean(chat || captureBlocksText() || loadingConversation);
   el('clear-history').disabled = el('newchat').disabled;
   for (const item of el('conversation-list').querySelectorAll('button')) item.disabled = el('newchat').disabled;
-  prompt.readOnly = Boolean(capture);
+  prompt.readOnly = captureBlocksText();
   const stop = el('stop');
   stop.hidden = !(capture || chat || speech);
-  const label = capture?.phase === 'recording' ? 'Stop recording'
-    : chat ? 'Stop generation' : speech ? 'Stop playback' : 'Cancel recording';
+  const label = capture?.phase === 'recording' && !capture.automatic ? 'Stop recording'
+    : chat ? 'Stop generation' : speech ? 'Stop playback' : 'Stop listening';
   stop.setAttribute('aria-label', label);
   stop.title = label;
   el('play').hidden = !speech?.needsGesture;
@@ -150,15 +159,37 @@ function updateControls() {
 }
 
 function endVoiceSession(state = 'Ready', detail = '') {
+  if (state === 'Error') autoListen = false;
   voiceMode = false;
   voiceApproval = null;
   if (capture) endCapture(capture);
+  stopSpeech();
   if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => {});
   audioContext = null;
   if (chat) chat.allowSpeech = false;
-  stopSpeech();
   if (!chat || state !== 'Ready') setStatus(state, detail);
   updateControls();
+}
+
+function pauseVoice(detail = 'Voice session paused.') {
+  autoListen = false;
+  endVoiceSession('Ready', detail);
+}
+
+async function maybeStartVoice() {
+  const canStart = () => autoListen && el('auto-send').checked && !el('workspace').hidden && !document.hidden
+    && el('connection').dataset.network !== 'offline' && !voiceMode && !chat && !capture
+    && !loadingConversation && !approvalCards.size && !micPermissionPending;
+  if (!canStart() || !navigator.permissions) return;
+  try {
+    const permission = await navigator.permissions.query({name: 'microphone'});
+    if (permission.state === 'granted' && canStart()) {
+      voiceMode = true;
+      void startRecording(true);
+    }
+  } catch {
+    // Browsers that do not report microphone permission use the microphone button.
+  }
 }
 
 function continueConversation(detail = '') {
@@ -218,6 +249,7 @@ function approval(item) {
   approvalControls(container, {...item, session_id: session});
   approvalCards.set(item.id, container);
   updateChat(() => transcriptView.append(container));
+  if (capture?.phase === 'listening') endCapture(capture);
   if (!chat && !capture && !speech) setStatus('Approval needed');
 }
 
@@ -237,7 +269,8 @@ function resolveApproval(id, outcome) {
     voiceApproval = null;
     void speak(message);
   } else if (!chat && !capture && !speech) {
-    setStatus('Ready');
+    continueConversation();
+    void maybeStartVoice();
   }
 }
 
@@ -289,6 +322,7 @@ async function loadConversation() {
   } finally {
     loadingConversation = false;
     updateControls();
+    void maybeStartVoice();
   }
 }
 
@@ -304,7 +338,7 @@ function saveConversationName(text) {
 }
 
 function switchConversation(id) {
-  if (chat || capture || loadingConversation) return;
+  if (chat || captureBlocksText() || loadingConversation) return;
   approvalCards.clear();
   endVoiceSession();
   showTranscript();
@@ -325,6 +359,12 @@ function stopSpeech() {
   const job = speech;
   speech = null;
   job.controller.abort();
+  if (job.source) {
+    job.source.onended = null;
+    job.source.stop();
+    job.source.disconnect();
+    job.gain.disconnect();
+  }
   speaker.pause();
   speaker.removeAttribute('src');
   speaker.load();
@@ -355,6 +395,24 @@ async function playSpeech(job) {
   }
 }
 
+async function playHandsFreeSpeech(job, audio) {
+  const context = audioContext;
+  if (!el('auto-send').checked || context?.state !== 'running') return false;
+  const buffer = await context.decodeAudioData(await audio.arrayBuffer());
+  if (speech !== job || context.state !== 'running') return false;
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  gain.gain.value = speaker.volume;
+  source.connect(gain).connect(context.destination);
+  source.start();
+  source.onended = () => { if (speech === job) finishSpeech(); };
+  job.source = source;
+  job.gain = gain;
+  setStatus('Speaking');
+  return true;
+}
+
 async function speak(answer) {
   const text = Array.from(answer.replace(/\s+/g, ' ').trim()).slice(0, MAX_SPEECH_CHARS).join('');
   if (!voiceMode || speaker.muted || !text) {
@@ -373,6 +431,7 @@ async function speak(answer) {
     if (!response.ok) throw await responseError(response);
     const audio = await response.blob();
     if (speech !== job) return;
+    if (await playHandsFreeSpeech(job, audio) || speech !== job) return;
     job.url = URL.createObjectURL(audio);
     speaker.src = job.url;
     await playSpeech(job);
@@ -401,6 +460,7 @@ el('play').addEventListener('click', () => void playSpeech(speech));
 speaker.volume = Number(el('volume').value) / 100;
 el('volume').addEventListener('input', () => {
   speaker.volume = Number(el('volume').value) / 100;
+  if (speech?.gain) speech.gain.gain.value = speaker.volume;
 });
 el('mute').addEventListener('click', () => {
   speaker.muted = !speaker.muted;
@@ -412,7 +472,6 @@ el('mute').addEventListener('click', () => {
 function releaseMic(job) {
   clearInterval(job.clock);
   clearTimeout(job.deadline);
-  clearTimeout(job.idle);
   cancelAnimationFrame(job.frame);
   job.source?.disconnect();
   job.source = null;
@@ -432,35 +491,42 @@ function endCapture(job) {
 
 function prepareAudioContext() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext || audioContext) return;
+  if (!AudioContext) return;
   try {
-    audioContext = new AudioContext();
-    void audioContext.resume().catch(() => {});
+    audioContext ??= new AudioContext();
+    return audioContext.resume().catch(() => {});
   } catch {
     audioContext = null;
   }
 }
 
 function observeVoice(job, rms, now) {
-  // A sustained signal starts the turn. Brief gaps between words keep it open.
   const threshold = Math.max(0.012, Math.min(0.035, job.noiseFloor * 2.5));
+  // Capture the quieter onset of a word before confirming a speech turn.
+  if (job.phase === 'listening' && rms >= threshold * 0.65) {
+    beginSpeechCapture(job);
+    if (capture !== job) return;
+    job.lastVoice = now;
+  }
   if (rms >= threshold) {
     job.voiceSince ??= now;
     job.lastVoice = now;
-    if (!job.heardVoice && now - job.voiceSince >= MIN_VOICE_MS) {
-      job.heardVoice = true;
-      clearTimeout(job.idle);
-      setStatus('Listening', 'Finish speaking and pause to send.');
-    }
+    if (now - job.voiceSince >= MIN_VOICE_MS) job.heardVoice = true;
   } else {
     job.noiseFloor += (rms - job.noiseFloor) * 0.06;
-    if (now - job.lastVoice > 180) job.voiceSince = null;
-    if (job.heardVoice && now - job.lastVoice >= END_OF_TURN_MS) finishRecording(job);
+    const silence = now - job.lastVoice;
+    if (job.phase !== 'recording') return;
+    if (job.heardVoice && silence >= END_OF_TURN_MS) {
+      finishRecording(job);
+    } else if (!job.heardVoice && silence > 180) {
+      endCapture(job);
+      continueConversation();
+    }
   }
 }
 
 function updateMeter(job) {
-  if (!audioContext) return false;
+  if (audioContext?.state !== 'running') return false;
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 1024;
   job.source = audioContext.createMediaStreamSource(job.stream);
@@ -471,7 +537,9 @@ function updateMeter(job) {
     const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
     if (!document.hidden) core.style.setProperty('--level', Math.min(1, rms * 6).toFixed(2));
     if (job.automatic) observeVoice(job, rms, now);
-    if (capture === job && job.phase === 'recording') job.frame = requestAnimationFrame(frame);
+    if (capture === job && (job.phase === 'listening' || job.phase === 'recording')) {
+      job.frame = requestAnimationFrame(frame);
+    }
   }
   job.frame = requestAnimationFrame(frame);
   return true;
@@ -497,7 +565,7 @@ async function transcribe(job) {
   try {
     const mime = job.recorder.mimeType || job.chunks[0]?.type || '';
     const extension = recordTypes.get(mime.split(';')[0].toLowerCase());
-    if (!job.bytes) throw Error('The recording is empty. Speak before pressing Stop.');
+    if (!job.bytes) throw Error('No speech was detected. Try speaking again.');
     if (!extension) throw Error('The browser produced an unsupported recording format.');
     const formData = new FormData();
     formData.append('file', new Blob(job.chunks, {type: mime}), `recording.${extension}`);
@@ -510,13 +578,16 @@ async function transcribe(job) {
     endCapture(job);
     showTranscript(transcript);
     if (job.automatic && /^(?:end (?:the )?voice session|stop listening)[.!?]*$/i.test(transcript)) {
-      endVoiceSession('Ready', 'Voice session ended.');
+      pauseVoice();
       return;
     }
-    prompt.value = transcript.slice(0, prompt.maxLength);
-    setStatus('Ready', transcript.length > prompt.maxLength ? 'The transcript exceeds the chat limit. Edit it before sending.' : '');
-    if (!el('review-transcript').checked && transcript.length <= prompt.maxLength) el('form').requestSubmit();
-    else prompt.focus();
+    if (!el('review-transcript').checked && transcript.length <= prompt.maxLength) {
+      void runChat(transcript, crypto.randomUUID(), true);
+    } else {
+      prompt.value = transcript.slice(0, prompt.maxLength);
+      setStatus('Ready', 'Review and send your transcript.');
+      prompt.focus();
+    }
   } catch (error) {
     if (capture !== job) return;
     endCapture(job);
@@ -539,8 +610,29 @@ function finishRecording(job) {
   updateControls();
 }
 
+function beginSpeechCapture(job) {
+  try {
+    job.recorder.start(250);
+  } catch (error) {
+    endVoiceSession('Error', microphoneError(error));
+    return;
+  }
+  job.phase = 'recording';
+  job.deadline = setTimeout(() => finishRecording(job), MAX_RECORD_MS);
+  if (!job.automatic) {
+    const started = performance.now();
+    el('timer').textContent = '0:00';
+    job.clock = setInterval(() => {
+      const seconds = Math.floor((performance.now() - started) / 1000);
+      el('timer').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    }, 1000);
+  }
+  setStatus('Listening', job.automatic ? 'Pause to send.' : '');
+  updateControls();
+}
+
 async function startRecording(automatic = false, detail = '') {
-  if (!voiceMode || chat || capture || voiceApproval || loadingConversation || micPermissionPending) return;
+  if (!voiceMode || chat || capture || voiceApproval || document.hidden || loadingConversation || micPermissionPending) return;
   stopSpeech();
   if (!automatic) showTranscript();
   if (!window.isSecureContext) {
@@ -551,12 +643,11 @@ async function startRecording(automatic = false, detail = '') {
     endVoiceSession('Error', 'Browser microphone recording is unavailable. Try a current Chromium or Firefox browser.');
     return;
   }
-  prepareAudioContext();
   const job = {automatic, phase: 'permission', controller: new AbortController(), chunks: [], bytes: 0,
     noiseFloor: 0, lastVoice: -Infinity, voiceSince: null, heardVoice: false};
   capture = job;
   micPermissionPending = true;
-  setStatus('Ready', 'Waiting for microphone permission…');
+  setStatus('Ready', 'Opening microphone…');
   updateControls();
   try {
     job.stream = await navigator.mediaDevices.getUserMedia({audio: {
@@ -580,33 +671,25 @@ async function startRecording(automatic = false, detail = '') {
     });
     job.recorder.addEventListener('stop', () => void transcribe(job));
     const fail = () => {
-      if (capture !== job || job.phase !== 'recording') return;
+      if (capture !== job || job.phase === 'transcribing') return;
       endVoiceSession('Error', 'The microphone stopped unexpectedly. Check your input device and try again.');
     };
     job.recorder.addEventListener('error', fail);
     job.stream.getAudioTracks().forEach(track => track.addEventListener('ended', fail));
-    job.recorder.start(250);
-    job.phase = 'recording';
-    const started = performance.now();
-    function tick() {
-      const seconds = Math.floor((performance.now() - started) / 1000);
-      el('timer').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    // Browsers may allow Web Audio only after the microphone stream is active.
+    if (audioContext?.state !== 'running') {
+      const resumed = prepareAudioContext();
+      if (resumed) await Promise.race([resumed, new Promise(resolve => setTimeout(resolve, 500))]);
     }
-    tick();
-    job.clock = setInterval(tick, 200);
-    job.deadline = setTimeout(() => finishRecording(job), MAX_RECORD_MS);
+    if (capture !== job) return;
     const hasMeter = updateMeter(job);
     if (job.automatic && !hasMeter) {
-      job.automatic = false;
-      el('auto-send').checked = false;
-      setStatus('Listening', 'Automatic turn detection is unavailable. Select Stop recording when finished.');
+      endVoiceSession('Error', 'Hands-free audio could not start. Tap the microphone to enable it.');
     } else if (job.automatic) {
-      job.idle = setTimeout(() => {
-        if (capture === job && !job.heardVoice) endVoiceSession('Ready', 'Voice session ended after 45 seconds without speech.');
-      }, IDLE_LISTEN_MS);
-      setStatus('Listening', detail || 'Speak when you’re ready.');
+      job.phase = 'listening';
+      setStatus('Listening', detail);
     } else {
-      setStatus('Listening');
+      beginSpeechCapture(job);
     }
   } catch (error) {
     if (capture !== job) return;
@@ -619,41 +702,60 @@ async function startRecording(automatic = false, detail = '') {
 }
 
 el('mic').addEventListener('click', () => {
+  autoListen = true;
   voiceMode = true;
+  void prepareAudioContext();
   showTranscript();
   void startRecording(el('auto-send').checked);
 });
 el('voice-mode').addEventListener('click', () => {
-  endVoiceSession('Ready', 'Voice session ended.');
+  pauseVoice();
 });
 
+try {
+  el('auto-send').checked = localStorage.getItem('balaji_hands_free') !== 'off';
+} catch {
+  // The default is also set in the page.
+}
 el('auto-send').addEventListener('change', () => {
-  if (!el('auto-send').checked && capture?.automatic) endCapture(capture);
-  if (!chat && !capture && !speech) continueConversation();
-  else updateControls();
+  const enabled = el('auto-send').checked;
+  try {
+    localStorage.setItem('balaji_hands_free', enabled ? 'on' : 'off');
+  } catch {
+    // The setting still applies to the current page.
+  }
+  if (enabled) {
+    autoListen = true;
+    if (voiceMode && !capture && !chat && !speech) continueConversation();
+    else void maybeStartVoice();
+  } else {
+    pauseVoice();
+  }
 });
 
 el('stop').addEventListener('click', () => {
   if (chat) {
-    endVoiceSession();
+    pauseVoice();
     chat.controller.abort();
     el('stop').disabled = true;
-  } else if (capture?.phase === 'recording') {
+  } else if (capture?.phase === 'recording' && !capture.automatic) {
     finishRecording(capture);
   } else if (speech) {
-    endVoiceSession('Ready', 'Playback stopped.');
+    pauseVoice('Playback stopped.');
   } else {
-    endVoiceSession('Ready', 'Voice session ended.');
+    pauseVoice();
   }
 });
 
 document.addEventListener('visibilitychange', () => {
   document.documentElement.toggleAttribute('data-inactive', document.hidden);
-  if (document.hidden && voiceMode) endVoiceSession('Ready', 'Voice session ended when you left this tab.');
+  if (document.hidden && voiceMode) endVoiceSession();
+  else if (!document.hidden) void maybeStartVoice();
 });
 
-async function runChat(text, key) {
-  if (chat || capture || voiceApproval || loadingConversation || !text) return;
+async function runChat(text, key, fromVoice = false) {
+  if (chat || captureBlocksText() || voiceApproval || loadingConversation || !text) return;
+  if (capture) endCapture(capture);
   stopSpeech();
   retryRequest = null;
   el('notice').textContent = '';
@@ -662,9 +764,9 @@ async function runChat(text, key) {
   const job = {controller: new AbortController(), allowSpeech: voiceMode};
   chat = job;
   updateControls();
-  prompt.value = '';
+  if (!fromVoice) prompt.value = '';
   msg('user', text);
-  const answer = msg('assistant waiting', 'BALAJI is thinking…');
+  const answer = msg('assistant', '', true);
   setStatus('Thinking');
   let reply = '';
   let result;
@@ -692,13 +794,14 @@ async function runChat(text, key) {
         if (update.type === 'token') {
           if (el('voice').dataset.state === 'executing') setStatus('Thinking');
           reply += update.text;
-          answer.classList.remove('waiting');
-          updateChat(() => { answer.textContent = reply; });
+          updateChat(() => {
+            answer.textContent = reply;
+            answer.hidden = false;
+          });
         } else if (update.type === 'tool') {
           reply = '';
           const detail = 'Running a tool for your request';
-          answer.classList.add('waiting');
-          updateChat(() => { answer.textContent = detail + '…'; });
+          updateChat(() => { answer.hidden = true; });
           setStatus('Executing', detail);
         } else if (update.type === 'done') {
           result = update;
@@ -714,20 +817,24 @@ async function runChat(text, key) {
       approval(result.pending_approval);
       if (job.allowSpeech && voiceMode) voiceApproval = result.pending_approval.id;
     } else {
-      answer.classList.remove('waiting');
-      updateChat(() => { answer.textContent = result.answer; });
+      updateChat(() => {
+        answer.textContent = result.answer;
+        answer.hidden = false;
+      });
     }
     announceReply(result.answer);
     if (result.prepared_message) showPreparedMessage(result.prepared_message);
     setStatus('Ready');
     void refresh();
   } catch (error) {
-    answer.classList.remove('waiting');
     if (job.controller.signal.aborted) {
       if (!reply) updateChat(() => answer.remove());
       setStatus('Ready', 'Generation stopped.');
     } else {
-      if (!reply) updateChat(() => { answer.textContent = 'Could not complete the reply.'; });
+      if (!reply) updateChat(() => {
+        answer.textContent = 'Could not complete the reply.';
+        answer.hidden = false;
+      });
       retryRequest = {text, key};
       endVoiceSession('Error', error.message);
     }
@@ -744,6 +851,8 @@ async function runChat(text, key) {
     void speak(result.answer);
   } else if (voiceMode) {
     continueConversation(job.controller.signal.aborted ? 'Generation stopped.' : '');
+  } else if (result) {
+    void maybeStartVoice();
   }
   document.dispatchEvent(new Event('balaji:refresh'));
 }

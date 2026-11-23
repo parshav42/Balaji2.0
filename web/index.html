@@ -94,7 +94,7 @@
       </div>
       <form class="chat-form" id="form">
         <input id="prompt" autocomplete="off" required maxlength="4000" placeholder="Message BALAJI" aria-label="Message">
-        <button id="mic" class="icon-button microphone" type="button" aria-label="Start recording" title="Start recording">
+        <button id="mic" class="icon-button microphone" type="button" aria-label="Start hands-free voice" title="Start hands-free voice">
           <svg class="icon" aria-hidden="true"><use href="#icon-mic"/></svg>
         </button>
         <button id="send" class="icon-button send" type="submit" aria-label="Send message" title="Send message">
@@ -198,7 +198,7 @@
     </div>
     <h3>Voice</h3>
     <div class="controls" id="voice-settings">
-      <label><input id="auto-send" type="checkbox"> Hands-free conversation</label>
+      <label><input id="auto-send" type="checkbox" checked> Hands-free conversation</label>
       <label><input id="review-transcript" type="checkbox"> Review transcript before sending</label>
       <button id="mute" type="button" aria-pressed="false">Mute</button>
       <label for="volume">Volume <input id="volume" type="range" min="0" max="100" value="80"></label>

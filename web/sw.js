@@ -1,5 +1,5 @@
 // Cache the public shell only. Device sessions, user data and actions go to the live laptop.
-const cacheName = 'balaji-shell-v2.2';
+const cacheName = 'balaji-shell-v2.3';
 const shell = ['/', '/assistant.css', '/dashboard.js', '/control.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)).then(() => self.skipWaiting()));

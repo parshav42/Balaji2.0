@@ -34,7 +34,7 @@ Run BALAJI from the laptop's graphical session. Ask “Open Python AI project in
 
 3. In a second terminal on the laptop using the same database settings, run `.venv/bin/python -m balaji.access owner`. Open **http://127.0.0.1:8000** on the laptop and use the one-use owner code to sign in.
 4. In **Connected Devices**, create a pairing code. On your phone, open the exact private **https://** URL, enter a device name and the code, then approve the displayed device in the laptop dashboard. Codes expire after ten minutes. Approved phone sessions expire after seven days.
-5. Use the phone browser’s **Install** or **Add to Home Screen** action to install the PWA. Select **Start voice conversation** and try “Check my laptop status.” Revoke lost or unused browsers from **Connected Devices**. The public app shell displays an offline state and reconnects when the laptop becomes reachable. Remote actions require the laptop to be powered on and reachable.
+5. Use the phone browser’s **Install** or **Add to Home Screen** action to install the PWA. If prompted, tap the microphone once and allow access, then say “Check my laptop status.” Revoke lost or unused browsers from **Devices**. The public app shell displays an offline state and reconnects when the laptop becomes reachable. Remote actions require the laptop to be powered on and reachable.
 
 Use private Tailscale Serve. This setup leaves Funnel, public port forwarding, and remote Ollama disabled. [Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve)
 

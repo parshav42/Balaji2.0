@@ -34,6 +34,7 @@ a { color: var(--ice); }
   height: 100vh;
   height: 100dvh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: radial-gradient(ellipse at 50% 43%, #0e1b30 0, #070d1a 61%);
@@ -56,6 +57,7 @@ a { color: var(--ice); }
 .menu { border-color: #243448; color: #d9e9f7; }
 #dashboard {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   width: min(100%, 808px);
   min-width: 0;
@@ -129,7 +131,6 @@ a { color: var(--ice); }
 .msg { max-width: 94%; padding: 9px 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.user { align-self: flex-end; background: #15273b; border-radius: 17px 17px 4px 17px; padding: 10px 15px; }
 .msg.assistant { align-self: flex-start; }
-.msg.waiting { color: var(--muted); }
 .approval-card {
   border: 1px solid #665941;
   background: #171e28;
@@ -146,6 +147,7 @@ a { color: var(--ice); }
 .composer #notice:empty, .recovery:not(:has(button:not([hidden]))) { display: none; }
 .chat-form {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 7px;
   border: 1px solid #32475e;
@@ -222,6 +224,7 @@ a { color: var(--ice); }
   .microphone { width: 52px; min-height: 48px; }
   .chat-form { gap: 5px; }
   #control-center { border-left: 0; }
+  .panel :is(input, select, textarea), .lock input { font-size: 1rem; }
 }
 @media (max-height: 480px) {
   .topbar { padding-block: 5px; }

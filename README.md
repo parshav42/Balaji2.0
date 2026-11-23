@@ -14,7 +14,7 @@ BALAJI 2.0 adds a private phone-accessible PWA, paired browsers, real laptop act
 - **Persistence:** SQLite messages (per chat), tasks, notes, approvals, document chunks.
 - **Local documents:** upload text/Markdown/PDF, chunk + retrieve, provide source markers. Keyword search works with zero embedding models; optional Ollama embeddings add semantic search.
 - **Web dashboard:** streams Ollama replies as they arrive. Includes conversation history, task and memory lists, document upload, and approval controls.
-- **Browser voice:** start a hands-free session, speak, and pause to send. BALAJI speaks each completed reply and then starts listening for the next turn. Manual recording and transcript editing are available with Hands-free off.
+- **Browser voice:** hands-free listening starts automatically with microphone permission. Speak and pause to send. BALAJI reads the reply aloud and listens for the next turn.
 - **Linux terminal voice:** ALSA or PulseAudio recording feeds the same local Whisper and Piper installations. Terminal and browser each use the agent’s existing approval flow.
 - **Tests/CI:** mocked LLM and speech models. Automated tests run without model downloads or audio hardware.
 
@@ -142,11 +142,11 @@ Export overrides in the shell that starts BALAJI. For terminal voice, run `pytho
 
 ### Use Voice Mode in the browser
 
-1. Open **http://127.0.0.1:8000** and select **Start voice conversation**.
-2. Select **Allow** when the browser prompts for microphone access. If permission is already blocked, open the site controls next to the address bar, allow **Microphone**, and reload.
+1. Open **http://127.0.0.1:8000**. If BALAJI needs browser permission, select the microphone once and choose **Allow**.
+2. If permission is blocked, open the site controls next to the address bar, allow **Microphone**, and reload.
 3. Wait for **Listening**, then say “Explain AI agents” and pause for about a second. BALAJI sends the transcript automatically. You can ask a follow-up when **Listening** returns. The microphone is released while BALAJI transcribes, generates, and speaks its reply.
 4. Piper reads up to 750 characters of the completed answer. Select **Play reply** if the browser blocks autoplay. Use **Stop playback** if you want to move on before the reply finishes.
-5. Say **“End the voice session”** or select **End voice session** to release the microphone. The session also ends when you leave the tab or stay silent for 45 seconds. Turn off **Hands-free** to use the microphone button and edit the transcript before selecting **Send**.
+5. Say **“Stop listening”** or select **Stop listening** to pause. BALAJI releases the microphone when the tab is hidden. To use manual recording or review a transcript, open **Control Center → Settings → Voice**.
 
 Requests to change tasks or memories pause the voice session for approval. Review the action and choose **Approve** or **Reject** on screen. BALAJI speaks the outcome and resumes listening. The voice endpoints are `POST /api/voice/transcribe` (multipart `file`, WebM/Ogg/MP4/WAV, up to 8 MiB and 60 seconds) and `POST /api/voice/speak` (JSON `{"text":"Hello"}`, up to 750 characters, WAV response).
 

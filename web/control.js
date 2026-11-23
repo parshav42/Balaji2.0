@@ -61,17 +61,19 @@ function setNetwork(online) {
   el('connection-label').textContent = online ? 'Connected' : 'Offline';
   el('network').textContent = online ? 'Live link established' : 'Laptop unreachable. Waiting to reconnect.';
   el('laptop-state').textContent = online ? 'Online · connected' : 'Unreachable';
-  if (online && el('voice').dataset.state === 'offline') setStatus('Ready');
-  if (!online) {
+  if (online) {
+    if (el('voice').dataset.state === 'offline') setStatus('Ready');
+    void maybeStartVoice();
+  } else {
     el('model-state').textContent = 'Ollama status unavailable';
     el('device-state').textContent = 'Device status unavailable';
     el('cpu-ram').textContent = '';
-    if (voiceMode) endVoiceSession('Offline', 'You can start a new voice session after reconnection.');
+    if (voiceMode) endVoiceSession('Offline');
     else if (!chat) setStatus('Offline');
   }
 }
 
-function openControl(panelId) {
+function openControl(panelId, focusSearch = true) {
   const dialog = el('control-center');
   const commands = [...el('commands').querySelectorAll('button')];
   const selected = commands.find(command => command.dataset.panel === panelId);
@@ -94,7 +96,7 @@ function openControl(panelId) {
     const search = el('command-search');
     search.value = '';
     search.dispatchEvent(new Event('input'));
-    search.focus();
+    (focusSearch ? search : el('close-control')).focus();
   }
   dialog.querySelector('.drawer-body').scrollTop = 0;
 }
@@ -144,10 +146,11 @@ function bindControlCenter() {
     const edge = dialog.getBoundingClientRect();
     if (event.clientX < edge.left) dialog.close();
   });
-  el('menu').addEventListener('click', () => openControl());
+  const showPalette = event => openControl(undefined, event.pointerType !== 'touch');
+  el('menu').addEventListener('click', showPalette);
   el('connection').addEventListener('click', () => openControl('devices'));
   el('close-control').addEventListener('click', () => dialog.close());
-  el('back-control').addEventListener('click', () => openControl());
+  el('back-control').addEventListener('click', showPalette);
   el('integrations').addEventListener('click', event => {
     const link = event.target.closest('a[href^="#"]');
     if (!link) return;
@@ -487,7 +490,7 @@ el('memory-export').addEventListener('click', handle(async () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }));
 el('clear-history').addEventListener('click', handle(async () => {
-  if (chat || capture || loadingConversation) return;
+  if (chat || captureBlocksText() || loadingConversation) return;
   if (!confirm('Delete the saved messages in the current conversation?')) return;
   loadingConversation = true;
   endVoiceSession();
@@ -502,6 +505,7 @@ el('clear-history').addEventListener('click', handle(async () => {
   } finally {
     loadingConversation = false;
     updateControls();
+    void maybeStartVoice();
   }
 }));
 
