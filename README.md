@@ -144,7 +144,7 @@ Export overrides in the shell that starts BALAJI. For terminal voice, run `pytho
 2. Select **Allow** when the browser prompts for microphone access. If permission is already blocked, open the site controls next to the address bar, allow **Microphone**, and reload.
 3. Wait for **Listening**, then say “Explain AI agents” and pause for about a second. BALAJI sends the transcript automatically. You can ask a follow-up when **Listening** returns. The microphone is released while BALAJI transcribes, generates, and speaks its reply.
 4. Piper reads up to 750 characters of the completed answer. Select **Play reply** if the browser blocks autoplay. Use **Stop playback** if you want to move on before the reply finishes.
-5. Select **End voice session** to release the microphone. The session also ends when you leave the tab or stay silent for 45 seconds. Turn off **Hands-free** to use the microphone button and edit the transcript before selecting **Send**.
+5. Say **“End the voice session”** or select **End voice session** to release the microphone. The session also ends when you leave the tab or stay silent for 45 seconds. Turn off **Hands-free** to use the microphone button and edit the transcript before selecting **Send**.
 
 Requests to change tasks or memories pause the voice session for approval. Review the action and choose **Approve** or **Reject** on screen. BALAJI speaks the outcome and resumes listening. The voice endpoints are `POST /api/voice/transcribe` (multipart `file`, WebM/Ogg/MP4/WAV, up to 8 MiB and 60 seconds) and `POST /api/voice/speak` (JSON `{"text":"Hello"}`, up to 750 characters, WAV response).
 

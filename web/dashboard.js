@@ -96,10 +96,10 @@ function continueConversation(detail = '') {
   updateControls();
   if (voiceApproval) {
     setStatus('Approval needed', 'Choose Approve or Reject to continue the voice conversation.');
-  } else if (voiceMode && el('auto-send').checked && !chat && !capture && !speech) {
+  } else if (voiceMode && el('auto-send').checked && !chat && !capture && !speech && !micPermissionPending) {
     void startRecording(true, detail);
   } else {
-    setStatus('Ready', detail);
+    setStatus('Ready', detail || (voiceMode && !el('auto-send').checked ? 'Use the microphone button to record.' : ''));
   }
 }
 
@@ -355,6 +355,10 @@ async function transcribe(job) {
     const transcript = text.trim();
     endCapture(job);
     showTranscript(transcript);
+    if (job.automatic && /^(?:end (?:the )?voice session|stop listening)[.!?]*$/i.test(transcript)) {
+      endVoiceSession('Ready', 'Voice session ended.');
+      return;
+    }
     prompt.value = transcript.slice(0, prompt.maxLength);
     setStatus('Ready', transcript.length > prompt.maxLength ? 'The transcript exceeds the chat limit. Edit it before sending.' : '');
     if (el('auto-send').checked && transcript.length <= prompt.maxLength) el('form').requestSubmit();
@@ -456,6 +460,7 @@ async function startRecording(automatic = false, detail = '') {
   } finally {
     micPermissionPending = false;
     updateControls();
+    if (job.phase === 'permission' && capture !== job && voiceMode && !chat && !speech) continueConversation();
   }
 }
 
@@ -472,7 +477,7 @@ el('voice-mode').addEventListener('click', () => {
 
 el('auto-send').addEventListener('change', () => {
   if (!el('auto-send').checked && capture?.automatic) endCapture(capture);
-  if (!chat && !capture && !speech && !micPermissionPending) continueConversation();
+  if (!chat && !capture && !speech) continueConversation();
   else updateControls();
 });
 
@@ -490,7 +495,7 @@ el('stop').addEventListener('click', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && voiceMode) endVoiceSession('Ready', 'Voice session paused when you left this tab.');
+  if (document.hidden && voiceMode) endVoiceSession('Ready', 'Voice session ended when you left this tab.');
 });
 
 el('form').addEventListener('submit', async event => {
